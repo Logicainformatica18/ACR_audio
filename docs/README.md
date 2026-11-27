@@ -62,6 +62,14 @@ upload_max_filesize = 256M
 post_max_size = 260M
 ```
 
+Además, nginx (el servidor web de Herd) tiene su propio límite. En `C:\Users\<tu usuario>\.config\herd\config\nginx\herd.conf` debe estar:
+
+```nginx
+client_max_body_size 260M;
+```
+
+Sin esto, los archivos de más de 128 MB fallan con el error *413 Request Entity Too Large*. Si cambias el tamaño máximo de subida desde la ventana de Herd, Herd puede reescribir este archivo: revisa que el valor siga siendo 260M o más.
+
 Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana de Herd pulsa **Stop all** y luego **Start all**.
 
 ## 3. Cómo arrancarla

@@ -37,3 +37,17 @@ Registro de las decisiones tomadas en el proyecto y el motivo de cada una. Las m
 | F1.10 | Registro desactivado quitando rutas, controlador y página. Hay tests que comprueban que `/register` da 404 | Una ruta sin uso es superficie de ataque; mejor que no exista |
 | F1.11 | Mensajes de Laravel en español creando `lang/es/` a mano (`APP_LOCALE=es`) | Sin paquetes de terceros: el usuario pidió solo fuentes oficiales |
 | F1.12 | `.gitignore`: carpeta de audios, cualquier extensión de audio en minúsculas o mayúsculas y `.env.*` salvo `.env.example` | Doble protección para que ningún audio ni secreto llegue a GitHub |
+
+## Fase 2 — Subida y lista
+
+| # | Decisión | Por qué |
+|---|---|---|
+| F2.1 | La interfaz sube **un archivo por petición**, en secuencia, con axios y `onUploadProgress` | Permite una barra de progreso real por archivo y que un error en uno no afecte a los demás. Además nunca se acercan al límite de `post_max_size` varios archivos juntos |
+| F2.2 | Validación doble: en el navegador (extensión y tamaño, para avisar al instante) y en el servidor (`StoreSongRequest`: extensión + tipo MIME **real** detectado por PHP + tamaño) | La del navegador es solo comodidad; la del servidor es la que protege. Un `.txt` renombrado a `.mp3` se rechaza |
+| F2.3 | Lista de tipos MIME amplia (por ejemplo `video/mp4` para m4a y `application/ogg` para ogg) | PHP (fileinfo) detecta así algunos archivos válidos. Sin ellos se rechazarían audios correctos |
+| F2.4 | Archivo guardado como `{user_id}/{song_id}/original.{ext}`, dentro de una transacción con la fila de la canción | Ruta sin texto del usuario. Si falla el guardado del archivo, no queda una canción sin archivo |
+| F2.5 | Título = nombre del archivo sin extensión, con `_` convertido en espacio y sin caracteres de control. Máximo 200 | Un nombre legible sin pedir nada extra. Se puede renombrar en la Fase 5 |
+| F2.6 | `SongPolicy` (autodetectada por Laravel). Las listas siempre se filtran con `Song::ownedBy($user)` | Doble barrera: las consultas solo traen lo propio y cada acción sobre una canción concreta pasa por la policy |
+| F2.7 | `SongResource` no expone rutas de archivo ni el log | La interfaz no necesita saber dónde están los archivos |
+| F2.8 | nginx de Herd: `client_max_body_size` de **128M → 260M** en `C:\Users\USER\.config\herd\config\nginx\herd.conf` (copia en `herd.conf.bak-acr`) | Aunque PHP aceptaba 256M, nginx cortaba en 128M con un error 413. Se descubrió al subir un WAV de 198 MB |
+| F2.9 | Orden de la lista según la preferencia `songs_sort` (recientes, título o estado) con `CASE` en SQL | `CASE` funciona igual en MySQL y en SQLite (tests) |

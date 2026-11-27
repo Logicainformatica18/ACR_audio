@@ -58,6 +58,37 @@ Al borrar un usuario se borran en cascada sus canciones, pistas, ajustes y silen
 - **Las rutas se construyen solo con ids numéricos y nombres fijos del servidor.** El nombre que escribe el usuario (`title`) y el nombre original del archivo (`original_name`) se guardan en la base de datos y nunca forman parte de una ruta.
 - La carpeta está en `.gitignore`, igual que cualquier `*.mp3`, `*.wav`, `*.flac`, `*.m4a` y `*.ogg`.
 
+## Subida de audios
+
+```
+Navegador (upload-dropzone.tsx)                 Servidor
+  arrastrar archivos ─► validar ext/tamaño
+  por cada archivo, en orden:
+    POST /songs (multipart, 1 archivo) ───────► StoreSongRequest: extensión + MIME real + tamaño
+       barra de progreso (onUploadProgress)     SongPolicy@create
+                                                transacción:
+                                                  crear fila songs (status = pending)
+                                                  guardar {user}/{song}/original.{ext}
+    ◄──────────────────────────────── 201 { song }
+  recargar la lista (router.reload only: songs)
+```
+
+Límites que debe cumplir un archivo, de menor a mayor:
+
+| Límite | Valor | Dónde |
+|---|---|---|
+| `AUDIO_MAX_UPLOAD_MB` | 250 MB | `.env` (validación de Laravel) |
+| `upload_max_filesize` | 256M | `php.ini` de Herd |
+| `post_max_size` | 260M | `php.ini` de Herd |
+| `client_max_body_size` | 260M | `herd.conf` de nginx (Herd) |
+
+## Rutas web
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/songs` | Lista y zona de subida |
+| POST | `/songs` | Sube un archivo (JSON) |
+
 ## Autenticación
 
 - Starter kit de React con sesiones de Laravel (tabla `sessions`).

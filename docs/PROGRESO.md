@@ -29,6 +29,21 @@
   - Login real en `http://acr_audio.test` con contraseña correcta e incorrecta.
   - "Recordarme" crea la cookie `remember_web` y la sesión sigue tras borrar la cookie de sesión, que es lo que pasa al cerrar el navegador.
 
+## Fase 2 — Subida y lista de canciones ✅
+
+- Página **Canciones** (`/songs`), con entrada en el menú lateral.
+- Zona para arrastrar uno o varios archivos (o hacer clic). Se suben de uno en uno con barra de progreso, porcentaje y mensaje de error claro por archivo.
+- Validación en navegador y servidor: extensión, tipo real y tamaño (máximo 250 MB).
+- Lista de canciones del usuario con estado (En cola, Procesando, Lista, Error), formato, tamaño, duración y fecha.
+- `SongPolicy`: cada usuario solo ve sus canciones.
+- nginx de Herd ampliado a 260M (antes cortaba en 128M).
+- Verificado:
+  - 38 tests pasan.
+  - Subida real por Herd de un MP3 de 0,7 MB y un WAV de 198 MB (ambos 201).
+  - Un texto renombrado a `.mp3` se rechaza (422).
+  - Los archivos quedan en `storage/app/private/audio/{usuario}/{canción}/original.ext`.
+  - Las canciones de prueba se borraron después.
+
 ## Problemas conocidos / pendientes
 
 - **No se pudo crear `D:\backups`.** La raíz `D:\` solo permite escribir a Administradores, y no se ejecutan comandos elevados. Siguen en su sitio:

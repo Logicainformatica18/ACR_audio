@@ -1,5 +1,5 @@
 import { type NavItem } from '@/types';
-import { LayoutGrid } from 'lucide-react';
+import { LayoutGrid, Music } from 'lucide-react';
 
 /** Menú principal (barra lateral y menú móvil). */
 export const mainNavItems: NavItem[] = [
@@ -7,5 +7,10 @@ export const mainNavItems: NavItem[] = [
         title: 'Panel',
         href: '/dashboard',
         icon: LayoutGrid,
+    },
+    {
+        title: 'Canciones',
+        href: '/songs',
+        icon: Music,
     },
 ];

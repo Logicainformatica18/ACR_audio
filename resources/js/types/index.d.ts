@@ -31,6 +31,29 @@ export interface SharedData {
     [key: string]: unknown;
 }
 
+export type SongStatus = 'pending' | 'processing' | 'ready' | 'failed';
+
+export interface Song {
+    id: number;
+    title: string;
+    status: SongStatus;
+    error: string | null;
+    original_name: string;
+    original_ext: string;
+    original_size: number;
+    duration: number | null;
+    model: string | null;
+    tracks_count?: number;
+    created_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+}
+
+export interface UploadLimits {
+    max_mb: number;
+    extensions: string[];
+}
+
 export interface User {
     id: number;
     name: string;
