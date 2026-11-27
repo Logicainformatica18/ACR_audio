@@ -1,0 +1,74 @@
+/.phpunit.cache
+/bootstrap/ssr
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+/auth.json
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+
+# Certificados / claves privadas
+/certs/
+*.pem
+*.key
+
+# Archivos subidos por usuarios (no son código)
+/public/uploads/
+/public/resource/
+/public/imageusers/
+/public/attachments/
+
+# Ejecutables
+*.exe
+
+# ===== Proyecto Python: separador/ =====
+# Entornos virtuales
+separador/**/.venv/
+separador/**/venv/
+separador/**/env/
+
+# Modelos descargados / pesos (muy pesados)
+separador/**/modelos/
+separador/**/pretrained_models/
+separador/**/*.pth
+separador/**/*.pt
+separador/**/*.ckpt
+separador/**/*.onnx
+separador/**/*.th
+
+# Archivos de audio
+separador/**/*.mp3
+separador/**/*.wav
+separador/**/*.flac
+separador/**/*.m4a
+separador/**/*.ogg
+
+# Carpetas de salida
+separador/**/separado/
+separador/**/separated/
+separador/**/output/
+
+# Temporales de Python
+separador/**/__pycache__/
+separador/**/*.py[cod]
+separador/**/.pytest_cache/
+separador/**/.ipynb_checkpoints/
+separador/**/*.egg-info/
+separador/**/*.log
+separador/**/.env
