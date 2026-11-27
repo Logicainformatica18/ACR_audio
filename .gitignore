@@ -90,3 +90,13 @@ separador/**/.ipynb_checkpoints/
 separador/**/*.egg-info/
 separador/**/*.log
 separador/**/.env
+
+# ===== Motor de acordes: tools/acordes/ =====
+# Su propio entorno virtual y los pesos de los modelos (se descargan con
+# descargar_modelos.py). El código y requirements.txt SÍ se suben.
+/tools/acordes/.venv/
+/tools/acordes/modelos/
+/tools/acordes/**/*.pt
+/tools/acordes/**/*.pth
+/tools/acordes/**/__pycache__/
+/tools/acordes/**/*.py[cod]

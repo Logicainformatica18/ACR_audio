@@ -106,3 +106,42 @@ Registro de las decisiones tomadas en el proyecto y el motivo de cada una. Las m
 | F5.8 | **Descargar pistas** desde el mezclador (`?download=1`) con nombre "Título - Pista.flac". El título se sanea para Windows y solo va en la cabecera `Content-Disposition` | Mejora útil: llevar una pista a otro programa. El texto del usuario nunca forma parte de una ruta |
 | F5.9 | **Panel** con totales por estado, minutos separados, espacio ocupado y últimas canciones | Que la página de inicio tras el login sea útil |
 | F5.10 | **Todos los tests usan un disco `audio` falso** (`Storage::fake` en `tests/TestCase.php`) y `phpunit.xml` apunta `AUDIO_STORAGE_PATH` a una carpeta de pruebas | **Incidente:** al añadir F5.6, tests que borran un usuario de prueba (id 1) borraron la carpeta **real** `audio/1`. Se perdieron los archivos derivados de la canción de prueba (no los originales de `D:\Pistas`). Se restauraron volviendo a separar la copia. Ahora hay dos barreras, comprobadas con un archivo testigo |
+
+## Fase 6 — Reconocedor de acordes
+
+### Comparación de motores (27/11/2026)
+
+Se probaron dos reconocedores de acordes con IA sobre la mezcla **Guitarra + Bajo + Piano + Otros** (sin Batería ni Voz) de 4 canciones ya separadas con `htdemucs_6s`. Dos son canciones con acordes conocidos, separadas a partir de **copias** de `D:\Pistas`.
+
+**Medida:** "En la tonalidad" es el % del tiempo con acorde (sin contar *N*) cuya tríada pertenece a los acordes esperados de la canción. Es una medida aproximada: no había anotaciones oficiales para estas grabaciones.
+
+| Canción (acordes esperados) | BTC vocabulario grande | BTC mayor/menor | madmom CNN+CRF | madmom DeepChroma+CRF |
+|---|---|---|---|---|
+| Zombie (Em C G D) | **100 %** · E menor · Em, Em7, C, G, Gmaj7, D | 98,4 % · E menor | 97,7 % · aparecen Bm, F#, A, E (no están) | 75,0 % |
+| Hotel California (Bm F#7 A E7 G D Em) | **100 %** · B menor · **F#7 y E7** detectados | 100 % · B menor | 99,5 % · aparecen Am, F#m | 100 % |
+| Balada en A menor / C mayor | **100 %** · A menor | 100 % · A menor | 100 % | 100 % |
+| Metal 80s en B menor (power chords) | **83,7 %** · B menor | 75,4 % · D mayor ✗ | 75,1 % | 74,4 % |
+| Tiempo de análisis (canción de 4–5 min) | **2,6–3,4 s (GPU)** | 2,3–2,9 s (GPU) | 40–60 s (CPU) | 0,2 s (CPU) |
+
+Acuerdo entre BTC (vocabulario grande) y madmom CNN, reduciendo a tríadas: 79 % (Zombie), 92 % (Hotel California), 93 % (balada) y 72 % (metal). Coinciden en lo principal y difieren en los pasajes ambiguos.
+
+| | BTC (jayg996/BTC-ISMIR19) | madmom (CPJKU/madmom) |
+|---|---|---|
+| Licencia del código | MIT | BSD |
+| Licencia de los modelos | MIT (en el mismo repositorio) | **CC BY-NC-SA 4.0**: solo uso no comercial |
+| Vocabulario | **170 clases**: mayor, menor, 7, maj7, m7, dim, dim7, m7b5, aug, sus2, sus4, 6, m6 y m(maj7) | Solo **mayor/menor** (24 + N) |
+| GPU | **Sí** (PyTorch) | No (numpy en CPU) |
+| Instalación en Windows con Python 3.12 | Funciona con 3 cambios menores (`np.float`, `yaml.load` y carga segura de los pesos) | **No se instala**: no hay paquete precompilado y su código Cython necesita el compilador de Visual Studio, que no está instalado. Se evaluó importándolo sin sus 3 módulos compilados, que no se usan para acordes |
+| Antigüedad | 2019 | Última versión publicada: 2018. El código de git está actualizado, pero sin versión publicada |
+
+| # | Decisión | Por qué |
+|---|---|---|
+| F6.1 | Motor elegido: **BTC con vocabulario grande** (`btc_model_large_voca.pt`) | Fue el mejor en las 4 canciones, detecta séptimas, sus y dim (pedido: "A7, Dmaj7, Bdim, Bsus4"), usa la GPU, tiene licencia MIT para código y pesos, y se instala sin compilador. madmom solo distingue mayor/menor, no se instala en Windows sin Visual Studio, su modelo bueno (CNN) tarda unos 50 s en CPU y sus pesos son de uso no comercial |
+| F6.2 | El motor vive en `tools/acordes/` con **su propio `.venv`** (Python 3.12, torch 2.11.0+cu128). El código de BTC se **copió adaptado** (solo inferencia) a `tools/acordes/btc/` con su LICENSE | No depende de nada de la carpeta del separador. El repositorio original es de 2019 (numpy < 1.24, `yaml.load` sin Loader): se quitó lo que solo sirve para entrenar y se adaptó a las versiones actuales sin cambiar los nombres de las capas, así los pesos oficiales cargan tal cual |
+| F6.3 | Los pesos (`*.pt`, 12 MB cada uno) **no se suben a git**. Los descarga `descargar_modelos.py` del repositorio oficial y comprueba su huella SHA-256. Se cargan con `torch.load(weights_only=True)` permitiendo solo los escalares de numpy | Regla del proyecto: nada de modelos en git. La huella detecta descargas corruptas o alteradas. `weights_only` impide que un archivo de pesos ejecute código |
+| F6.4 | Análisis **por ventanas de 10 s que avanzan de 2,5 s en 2,5 s**. Cada instante lo ven 4 ventanas y se promedian sus probabilidades, con más peso al centro de cada ventana. La CQT se calcula ventana a ventana, igual que en el entrenamiento | El script original cortaba en trozos de 10 s sin solapar y fallaba en los bordes. Así no se cortan acordes y cada ventana se parece a lo que el modelo vio al entrenar |
+| F6.5 | **Entrega progresiva:** cada bloque son 4 ventanas (unos 10 s nuevos) procesadas juntas en la GPU. Lo que ya no va a recibir más ventanas se entrega enseguida, salvo los últimos 2 s, que pueden cambiar | Cumple "va entregando los acordes a medida que los detecta" sin entregar nada que luego cambie. Cada acorde se envía una sola vez |
+| F6.6 | Suavizado de ±2 cuadros (±0,19 s), unión de acordes iguales seguidos y absorción de los de menos de 0,45 s | Evita parpadeos de acordes de una décima de segundo, que no sirven para tocar |
+| F6.7 | Notación de guitarrista: `C, C#, D, Eb, E, F, F#, G, Ab, A, Bb, B` + sufijos `m, 7, maj7, m7, dim, dim7, m7b5, aug, sus2, sus4, 6, m6, m(maj7)`. `N` = sin acorde (también la clase "desconocido" de BTC) | Es como lo escribe un guitarrista: F#m7, Bb, Eb. Se usan bemoles en Eb, Ab y Bb porque es lo habitual |
+| F6.8 | **Tonalidad:** para cada una de las 24 tonalidades se suma el tiempo de los acordes que le pertenecen; en menor se aceptan v y V. Se añade un poco de Krumhansl-Kessler sobre el croma de la mezcla y un bonus por el tiempo que suena la tónica y por empezar o terminar en ella | Solo con el croma, Krumhansl-Kessler confundía E menor y C mayor en la balada. Con los acordes, la balada da A menor, Zombie E menor y Hotel California B menor. Se re-estima en cada bloque, así aparece pronto |
+| F6.9 | Una canción de 4–5 minutos se analiza en **unos 3 s en la GPU, unos 6 s en total** (la carga de torch y librosa tarda unos 3 s) | La CQT de las ventanas de cada bloque se calcula en una sola llamada. Antes tardaba 18 s por reconstruir los filtros en cada ventana |
