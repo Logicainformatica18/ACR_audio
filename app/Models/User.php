@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -37,5 +39,25 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function songs(): HasMany
+    {
+        return $this->hasMany(Song::class);
+    }
+
+    public function preference(): HasOne
+    {
+        return $this->hasOne(UserPreference::class);
+    }
+
+    /** Devuelve las preferencias del usuario, creándolas con valores por defecto si no existen. */
+    public function preferences(): UserPreference
+    {
+        if (! $this->preference) {
+            $this->setRelation('preference', $this->preference()->firstOrCreate([]));
+        }
+
+        return $this->preference;
     }
 }

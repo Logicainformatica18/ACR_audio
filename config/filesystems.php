@@ -47,6 +47,25 @@ return [
             'report' => false,
         ],
 
+        // Audios de los usuarios (originales y pistas separadas). Nunca público.
+        // AUDIO_STORAGE_PATH puede ser absoluta (D:\audios) o relativa al proyecto.
+        // Vacía: storage/app/private/audio
+        'audio' => [
+            'driver' => 'local',
+            'root' => (function () {
+                $path = env('AUDIO_STORAGE_PATH');
+                if (! $path) {
+                    return storage_path('app/private/audio');
+                }
+
+                return preg_match('#^([A-Za-z]:[\\\\/]|[\\\\/])#', $path) ? $path : base_path($path);
+            })(),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

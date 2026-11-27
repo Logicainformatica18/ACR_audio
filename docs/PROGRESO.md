@@ -15,6 +15,20 @@
   - `/dashboard` sin sesión redirige al login.
   - Las rutas viejas (`/supports`, `/clients`) dan 404.
 
+## Fase 1 — Usuario, base de datos y configuración ✅
+
+- Comando `php artisan usuario:crear` (opciones `--nombre`, `--email`, `--password` y `--generar`). Usuario `admin@acr.test` creado.
+- Registro público desactivado: rutas, controlador y página eliminados.
+- Migraciones y modelos de canciones, pistas, ajustes de pista, silencios programados y preferencias de usuario, con claves foráneas en cascada.
+- Disco `audio` con `AUDIO_STORAGE_PATH`. Variables `SEPARATOR_*` y `AUDIO_MAX_UPLOAD_MB` en `.env` y `.env.example`.
+- `.gitignore`: carpeta de audios, extensiones de audio y `.env.*`.
+- Mensajes en español (`lang/es`).
+- Corregido `SESSION_DOMAIN`, que impedía el login (ver `DECISIONES.md`, L14).
+- Verificado:
+  - 32 tests pasan.
+  - Login real en `http://acr_audio.test` con contraseña correcta e incorrecta.
+  - "Recordarme" crea la cookie `remember_web` y la sesión sigue tras borrar la cookie de sesión, que es lo que pasa al cerrar el navegador.
+
 ## Problemas conocidos / pendientes
 
 - **No se pudo crear `D:\backups`.** La raíz `D:\` solo permite escribir a Administradores, y no se ejecutan comandos elevados. Siguen en su sitio:

@@ -23,6 +23,24 @@ yarn-error.log
 /.vscode
 /.zed
 
+# ===== ACR Audio =====
+# Carpeta de audios de los usuarios (originales y pistas). NUNCA a git.
+/storage/app/private/audio/
+# Cualquier archivo de audio, esté donde esté (también en mayúsculas)
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.ogg
+*.MP3
+*.WAV
+*.FLAC
+*.M4A
+*.OGG
+# Variantes del .env con datos reales
+.env.*
+!.env.example
+
 # Certificados / claves privadas
 /certs/
 *.pem
