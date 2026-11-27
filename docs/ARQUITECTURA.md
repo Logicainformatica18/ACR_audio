@@ -12,13 +12,32 @@ app/
     TrackSetting.php                  volumen / mute / solo de una pista
     ScheduledSilence.php              silencio programado de una pista
     UserPreference.php                preferencias del usuario
+    Chord.php                         acorde de una canción (inicio, fin, nombre, confianza, editado)
+  Jobs/
+    SeparateSong.php                  cola "separation": separa, calcula ondas y encola los acordes
+    AnalyzeChords.php                 cola "acordes": ejecuta el motor y guarda cada acorde al llegar
+  Services/
+    Separator.php                     envoltorio de audio-separator
+    ChordEngine.php                   envoltorio de tools/acordes/acordes.py
+    Waveform.php                      forma de onda precalculada con ffmpeg
+  Console/Commands/
+    AnalizarAcordes.php               php artisan acordes:analizar
+    CalcularOndas.php                 php artisan ondas:calcular
+  Http/Controllers/ChordController.php  avance del análisis, corregir, volver a analizar
 config/
-  audio.php                           límites de subida, motor de separación, modelos, pistas
+  audio.php                           límites de subida, motores de separación y acordes, modelos, pistas
   filesystems.php                     disco "audio"
 lang/es/                              mensajes de Laravel en español
 resources/js/
   lib/navigation.ts                   menú lateral
+  lib/mixer/chords.ts                 acordes: tipos, búsqueda del actual, consulta del avance
+  components/mixer/chord-*.tsx        fila de acordes, vista ampliada, hoja y ventana de corrección
   pages/…                             páginas React (Inertia)
+tools/acordes/                        motor de acordes en Python (con su propio .venv, fuera de git)
+  acordes.py                          recibe pistas, escribe eventos JSON por la salida estándar
+  btc/modelo.py                       BTC adaptado (solo inferencia), licencia MIT en btc/LICENSE
+  descargar_modelos.py                descarga y verifica los pesos (SHA-256) a modelos/
+  instalar.bat, requirements.txt      instalación del entorno
 docs/                                 esta documentación
 ```
 
@@ -28,8 +47,9 @@ docs/                                 esta documentación
 |---|---|---|
 | `users` | Usuarios (`name`, `email`, `password`, `remember_token`) | — |
 | `user_preferences` | Preferencias: `master_volume` (volumen general del mezclador), `separation_model` (null = el del `.env`), `songs_sort` (orden de la lista: `recent`, `title`, `status`) y `keyboard_shortcuts` | 1 a 1 con `users` (`user_id` único, borrado en cascada) |
-| `songs` (canciones) | `title`, `original_name` (solo informativo), `original_ext`, `original_size`, `duration`, `status`, `model`, `log`, `error`, `queued_at`/`started_at`/`finished_at` | N a 1 con `users` (cascada) |
-| `tracks` (pistas) | `stem` (vocals, drums…), `file_name` (generado por el servidor), `size` y `position` | N a 1 con `songs` (cascada). Único por (`song_id`, `stem`) |
+| `songs` (canciones) | `title`, `original_name` (solo informativo), `original_ext`, `original_size`, `duration`, `status`, `model`, `log`, `error`, `queued_at`/`started_at`/`finished_at`. **Análisis de acordes:** `chords_status` (null = nunca analizada, `pending`, `processing`, `ready`, `failed`), `chords_progress` (0–100), `chords_model`, `chords_key` (tonalidad, "B menor"), `chords_error`, `chords_started_at`/`chords_finished_at` | N a 1 con `users` (cascada) |
+| `tracks` (pistas) | `stem` (vocals, drums…), `file_name` (generado por el servidor), `size`, `position` y `peaks` (forma de onda: 4000 bytes 0–255 en base64) | N a 1 con `songs` (cascada). Único por (`song_id`, `stem`) |
+| `chords` (acordes) | `start_seconds`, `end_seconds`, `chord` (notación de guitarrista: `Bm`, `F#m7`, `N` = sin acorde), `confidence` (0–1, null si es manual) y `edited` (corregido a mano) | N a 1 con `songs` (cascada). Índice (`song_id`, `start_seconds`) |
 | `track_settings` (ajustes de pista) | `volume` (0–1), `muted` y `solo` | 1 a 1 con `tracks` (cascada). Si no existe, el modelo devuelve 1 / false / false |
 | `scheduled_silences` (silencios programados) | `start_seconds` y `end_seconds` | N a 1 con `tracks` (cascada) |
 | `jobs`, `failed_jobs`, `job_batches` | Cola de trabajos (driver `database`) | — |
@@ -98,7 +118,9 @@ SeparateSong::handle()
          --custom_output_names {"Vocals":"vocals",…}
      · cada 1,5 s: % de la barra de progreso → caché "song-progress:{id}"
   4. éxito: mueve work/*.flac → stems/{stem}.flac, crea filas en tracks,
-            duración con ffprobe, status = ready, guarda log
+            forma de onda de cada pista (Waveform, ffmpeg) → tracks.peaks,
+            duración con ffprobe, status = ready, guarda log,
+            y encola el análisis de acordes (cola "acordes")
      error: status = failed, error = línea más útil del log, log completo
   5. borra work/
 ```
@@ -116,12 +138,50 @@ La página Canciones llama a `GET /songs/status` cada 2,5 s **solo** mientras al
 
 Cuando una termina (Lista o Error), la lista se recarga.
 
+## Cola de acordes
+
+```
+SeparateSong (al terminar) ─► Song::queueChordAnalysis()
+                                chords_status = pending ─► AnalyzeChords (cola "acordes")
+                                                              │
+iniciar.bat, ventana 2 ─► php artisan queue:work --queue=acordes  (en paralelo a la de separación)
+                                                              │
+AnalyzeChords::handle()
+  1. comprueba el motor (python, script y pesos); si falta algo → failed con el motivo
+  2. pistas de entrada: guitar + bass + piano + other (sin drums ni vocals)
+  3. borra los acordes automáticos (los editados a mano se quedan); status = processing
+  4. Symfony Process (sin shell, timeout CHORDS_TIMEOUT):
+       tools\acordes\.venv\Scripts\python.exe tools\acordes\acordes.py guitar.flac bass.flac piano.flac other.flac
+         --modelo btc-large --modelos-dir tools\acordes\modelos
+     callback en vivo, una línea JSON por evento:
+       {"tipo":"acorde",...}     → INSERT en chords, recortado alrededor de los editados
+       {"tipo":"progreso",...}   → songs.chords_progress (máx. 2 veces por segundo)
+       {"tipo":"tonalidad",...}  → songs.chords_key (solo si cambia)
+       {"tipo":"error",...}      → mensaje para chords_error
+       {"tipo":"fin"}            → status = ready, progress = 100
+```
+
+### Motor (`tools/acordes/acordes.py`)
+
+1. Mezcla las pistas en mono y las convierte a 22 050 Hz.
+2. Ventanas de 10 s (108 cuadros CQT de 144 bins, como en el entrenamiento de BTC) que avanzan de 2,5 s en 2,5 s. Las probabilidades de las ventanas que se solapan se promedian con más peso en el centro.
+3. Cada **bloque** son 4 ventanas (unos 10 s nuevos) que se procesan juntas en la GPU. Lo que ya no recibirá más ventanas se suaviza, se une y se **entrega**, salvo los últimos 2 s.
+4. Normaliza los nombres a notación de guitarrista y re-estima la tonalidad en cada bloque.
+
+Una canción de 5 minutos tarda unos 7 s en total: unos 3–4 s en cargar Python, torch y librosa, y unos 3 s de análisis en la GPU.
+
 ## Mezclador y cómo se sirven los audios
 
 ```
 GET /songs/{id}  (MixerController@show, policy view, solo canciones "ready")
-  └─ props: song, tracks[{id, stem, label, color, url, volume, muted, solo, silences[]}],
-            preferences{master_volume, keyboard_shortcuts}
+  └─ props: song, tracks[{id, stem, label, color, url, peaks, volume, muted, solo, silences[]}],
+            preferences{master_volume, keyboard_shortcuts},
+            analysis{status, progress, key, model, error}, chords[{id, start, end, chord, confidence, edited}]
+            (acordes leídos de la BD: aparecen al instante, sin volver a analizar)
+
+  · si analysis.status es pending/processing: GET /songs/{id}/chords cada 2 s hasta que termine
+  · peaks (si existe) se dibuja al abrir, antes de descargar el audio
+  · acorde actual: búsqueda binaria en cada fotograma; se resalta sin re-renderizar React
 
 Navegador (pages/songs/mixer.tsx + lib/mixer/engine.ts)
   1. por cada pista (2 a la vez): fetch(url) con % → decodeAudioData → AudioBuffer
@@ -164,14 +224,18 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | PATCH | `/songs/{id}` | Renombrar (solo el dueño) |
 | DELETE | `/songs/{id}` | Borrar canción, pistas, ajustes, silencios y archivos (solo el dueño; no mientras se procesa) |
 | GET | `/songs/{id}/tracks/{pista}/audio?download=1` | Descarga la pista como "Título - Pista.flac" |
+| GET | `/songs/{id}/chords` | Estado del análisis y acordes guardados (solo el dueño) |
+| POST | `/songs/{id}/chords/analyze` | Volver a analizar (409 si ya está en marcha) |
+| PATCH | `/songs/{id}/chords/{acorde}` | Corregir un acorde a mano: queda `edited` (solo el dueño) |
 | GET | `/dashboard` | Panel con resumen |
 | GET/PUT | `/settings/preferences` | Preferencias del usuario |
 | PATCH | `/settings/preferences/sort` | Orden de la lista (desde la página Canciones) |
 
 ## Tests
 
-- `php artisan test`: 63 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío y `withoutVite()`.
-- **Nunca** tocan la base `audio`, los archivos reales ni el audio-separator.
+- `php artisan test`: 79 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
+- El job de acordes se prueba con un **motor falso en PHP** (`tests/Fixtures/fake_chords_*.php`) que imprime los mismos eventos JSON.
+- **Nunca** tocan la base `audio`, los archivos reales, el audio-separator ni el motor de acordes real.
 
 ## Autenticación
 
@@ -191,3 +255,8 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | `SEPARATOR_MODEL` | Modelo por defecto (`htdemucs_6s.yaml`) |
 | `SEPARATOR_OUTPUT_FORMAT` | Formato de las pistas (`FLAC`) |
 | `SEPARATOR_TIMEOUT` | Segundos máximos por canción (3600) |
+| `CHORDS_PYTHON` | Python del motor de acordes. Vacío = `tools/acordes/.venv/Scripts/python.exe` |
+| `CHORDS_SCRIPT` | Script del motor. Vacío = `tools/acordes/acordes.py` |
+| `CHORDS_MODELS_DIR` | Carpeta de los pesos. Vacío = `tools/acordes/modelos` |
+| `CHORDS_MODEL` | `btc-large` (vocabulario grande, por defecto) o `btc-majmin` (solo mayor/menor) |
+| `CHORDS_TIMEOUT` | Segundos máximos de análisis por canción (900) |

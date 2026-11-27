@@ -1,10 +1,11 @@
 # ACR Audio
 
-Plataforma web **local** para separar canciones en pistas (voz, batería, bajo, guitarra, piano y otros) con inteligencia artificial usando tu GPU, y escucharlas en un mezclador donde puedes silenciar, dejar solo o bajar el volumen de cada pista y programar silencios por tiempo. Todo se guarda en la base de datos y cada usuario ve solo sus canciones.
+Plataforma web **local** para separar canciones en pistas (voz, batería, bajo, guitarra, piano y otros) con inteligencia artificial usando tu GPU, y escucharlas en un mezclador donde puedes silenciar, dejar solo o bajar el volumen de cada pista y programar silencios por tiempo. Además **reconoce los acordes** de cada canción (con la tonalidad) y los muestra sincronizados mientras suena. Todo se guarda en la base de datos y cada usuario ve solo sus canciones.
 
 - **Backend:** Laravel 12 (PHP 8.3), MySQL y una cola de trabajos en base de datos.
 - **Frontend:** React + Inertia + TypeScript + Tailwind (starter kit oficial de Laravel).
 - **Motor de separación:** [audio-separator](https://github.com/nomadkaraoke/python-audio-separator) con el modelo `htdemucs_6s`, que se ejecuta fuera del proyecto.
+- **Motor de acordes:** [BTC](https://github.com/jayg996/BTC-ISMIR19) (Bi-directional Transformer for Chord recognition), en `tools/acordes/` con su propio entorno de Python.
 
 ---
 
@@ -17,6 +18,7 @@ Plataforma web **local** para separar canciones en pistas (voz, batería, bajo, 
 | [Node.js](https://nodejs.org/) | Compilar el frontend | 26 |
 | [Composer](https://getcomposer.org/) | Dependencias PHP (viene con Herd) | 2.11 |
 | audio-separator en su propio entorno de Python | Separar pistas con la GPU | 0.48.0 (torch 2.11 + CUDA 12.8) |
+| [Python 3.12](https://www.python.org/) | Motor de acordes (`tools/acordes`, entorno propio) | 3.12.10 |
 | ffmpeg en el PATH | audio-separator lo usa para leer y escribir audio | 9.1 |
 | GPU NVIDIA con driver actualizado | Acelerar la separación | RTX 5060 Ti 16 GB |
 
@@ -51,7 +53,13 @@ npm run build
 php artisan usuario:crear --nombre="Tu nombre" --email=tu@correo.test --generar
 ```
 
-El último comando muestra **una sola vez** una contraseña generada al azar. Guárdala y cámbiala luego en *Configuración → Contraseña*. Si prefieres escribirla tú, quita `--generar` y el comando te la pedirá (mínimo 12 caracteres, con letras y números).
+```powershell
+# 7) Motor de acordes: crea tools\acordes\.venv, instala torch con CUDA 12.8
+#    (unos 3 GB) y descarga los modelos de BTC (12 MB cada uno)
+tools\acordes\instalar.bat
+```
+
+El comando del paso 6 muestra **una sola vez** una contraseña generada al azar. Guárdala y cámbiala luego en *Configuración → Contraseña*. Si prefieres escribirla tú, quita `--generar` y el comando te la pedirá (mínimo 12 caracteres, con letras y números).
 
 ### Límites de subida de PHP (Herd)
 
@@ -75,7 +83,11 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 ## 3. Cómo arrancarla
 
 1. Herd debe estar abierto (icono en la bandeja del sistema).
-2. Haz doble clic en **`iniciar.bat`** (en la carpeta del proyecto). Se abre una ventana negra: **déjala abierta** mientras uses ACR Audio. Es la que separa las canciones con la GPU, de una en una. Si la cierras, las canciones nuevas se quedan "En cola" sin perderse, y se procesan cuando la vuelvas a abrir.
+2. Haz doble clic en **`iniciar.bat`** (en la carpeta del proyecto). Se abren **dos ventanas negras**; **déjalas abiertas las dos** mientras uses ACR Audio:
+   - **"ACR Audio - 1 SEPARACION de pistas"**: separa las canciones con la GPU, de una en una.
+   - **"ACR Audio - 2 ACORDES"**: reconoce los acordes de cada canción en cuanto termina de separarse, en paralelo a la separación de la siguiente.
+
+   Si cierras alguna, lo pendiente se queda "En cola" sin perderse y se procesa cuando vuelvas a abrir `iniciar.bat`.
 3. Entra en **http://acr_audio.test** e inicia sesión. Marca **Recordarme** para no tener que volver a entrar aunque cierres el navegador.
 
 ## 4. Cómo usarla
@@ -94,6 +106,21 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 7. **No hay botón de guardar**: todo se guarda solo. Arriba a la derecha verás "Guardando…" y luego "Guardado". La próxima vez que abras la canción estará igual que la dejaste.
 8. El botón **⬇** de cada pista la descarga en FLAC (por ejemplo `Mi canción - Voz.flac`).
 
+### Acordes
+
+Cuando una canción termina de separarse, sus acordes se analizan solos. Se usa la mezcla de guitarra, bajo, piano y otros, sin batería ni voz. Una canción de 5 minutos tarda **unos 7 segundos**. En el mezclador verás:
+
+- **Arriba, junto al reloj**, el acorde que suena ahora (grande) y el siguiente (más pequeño).
+- **Encima de las pistas**, la fila de acordes de toda la canción, alineada con la línea de tiempo. Debajo, una **vista ampliada** de unos 20 segundos que se mueve mientras suena, con los nombres en grande.
+- La **tonalidad** detectada (por ejemplo, "B menor").
+- **Mientras se analiza**, los acordes ya detectados aparecen enseguida y el resto se ve rayado con "Analizando… %".
+- **Clic** en un acorde: la canción salta a ese momento.
+- **Doble clic o clic derecho** en un acorde: puedes **corregirlo** (por ejemplo `Bm`, `F#m7`, `Dmaj7`, `Bsus4`, `C/G`, o `N` si no suena ningún acorde). Los corregidos llevan un punto azul y **se conservan** aunque vuelvas a analizar.
+- **Hoja de acordes**: botón *Mostrar hoja*, con todos los acordes en orden y el actual resaltado mientras suena.
+- **Volver a analizar**: repite el análisis (pide confirmación). Tus correcciones no se pierden.
+
+Los acordes quedan guardados: la próxima vez que abras la canción salen de la base de datos al instante, sin volver a analizar.
+
 ### Organizar tus canciones
 
 - **Buscar:** escribe en "Buscar canción…". No importan las tildes ni las mayúsculas.
@@ -110,7 +137,7 @@ En **tu nombre (abajo a la izquierda) → Configuración → Preferencias** pued
 
 En **Contraseña** puedes cambiar tu contraseña.
 
-> Si cambias el código del proyecto, cierra y vuelve a abrir `iniciar.bat` para que el worker use la versión nueva.
+> Si cambias el código del proyecto, cierra las dos ventanas y vuelve a abrir `iniciar.bat` para que los workers usen la versión nueva.
 
 ## 5. Comandos útiles
 
@@ -120,6 +147,8 @@ En **Contraseña** puedes cambiar tu contraseña.
 | `php artisan test` | Ejecuta los tests automáticos (usan una base temporal en memoria, no tocan tus datos) |
 | `npm run build` | Vuelve a compilar el frontend tras cambiar archivos de `resources/js` |
 | `php artisan migrate` | Aplica migraciones nuevas sin borrar datos |
+| `php artisan acordes:analizar` | Encola el análisis de acordes de las canciones separadas que nunca se analizaron. Con un id (`acordes:analizar 7`) analiza esa canción; con `--todas`, todas |
+| `php artisan ondas:calcular` | Precalcula la forma de onda de las pistas que no la tienen (`--todas` para recalcularlas todas) |
 
 ## 6. Más documentación
 

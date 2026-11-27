@@ -111,10 +111,60 @@
     11. mezclador en modo oscuro, sin errores en consola
   - El trabajo de una canción borrada mientras estaba en cola se descartó sin error (`failed_jobs` = 0).
 
+## Fase 6 — Reconocedor de acordes con IA ✅
+
+- **Motor** en `tools/acordes/`:
+  - su propio `.venv` (Python 3.12, torch 2.11.0+cu128), independiente del separador
+  - instalación con `instalar.bat`
+  - pesos descargados del repositorio oficial y verificados con SHA-256 (fuera de git)
+- **Comparación** BTC vs madmom con 4 canciones separadas (2 de ellas, copias nuevas de `D:\Pistas`). Ganó **BTC con vocabulario grande**; ver `DECISIONES.md`, F6.1.
+- **Laravel:**
+  - tabla `chords` y campos del análisis en `songs`
+  - job `AnalyzeChords` en la cola **`acordes`**, que lee la salida del motor en vivo y guarda cada acorde al llegar
+  - se encola solo al terminar cada separación
+  - rutas para consultar, corregir y volver a analizar
+  - comandos `acordes:analizar` y `ondas:calcular`
+  - `iniciar.bat` abre **dos ventanas**
+- **Mezclador:**
+  - fila de acordes alineada con la línea de tiempo y una vista ampliada que se desplaza
+  - indicador grande con el acorde actual y el siguiente
+  - tonalidad
+  - clic para saltar; doble clic o clic derecho para corregir
+  - hoja de acordes que se puede mostrar u ocultar
+  - "Volver a analizar"
+- **Ondas precalculadas** al separar, guardadas en `tracks.peaks`. Se dibujan al abrir el mezclador.
+- **Canciones que ya existían:** se ejecutaron `ondas:calcular` (24 pistas en 10 s) y `acordes:analizar` (4 canciones: A menor, E menor, A menor y B menor; unos 6–7 s cada una).
+- **Verificado:**
+  - **79 tests** pasan (16 nuevos, con un motor falso en PHP).
+  - `npm run types`, `npm run build` y `eslint .` sin errores.
+  - **Prueba completa en Edge** con una canción nueva: una **copia** de *Hotel California* de `D:\Pistas`, de 6:31 (hash comprobado).
+    1. Subida, "En cola" y "Procesando". Separación en 33 s, con las ondas incluidas.
+    2. "Lista" sin recargar, y el análisis de acordes queda en su cola.
+    3. Mezclador: las **ondas se ven a los 0,27 s** y el audio está listo a los 3,8 s.
+    4. Reproduciendo, se arranca la ventana de acordes: "En cola" → "Analizando… 1 %" → "8 %" → acordes en pantalla con "Analizando… 99 %" y la tonalidad provisional "B menor" → listo. El análisis tardó **8 s**.
+    5. El resultado es la progresión real de la canción: **Bm F#7 A E7 G D Em F#7**.
+    6. El indicador y el resaltado siguen a la reproducción (G → D → Em7). Clic en un acorde = salto.
+    7. Corrección con doble clic ("D" → "Dmaj7, corregido a mano") y con clic derecho. "H7" da un error claro.
+    8. **Cerrar y volver a abrir:** 148 acordes visibles a los **0,31 s** y **0 consultas** a `/chords` en 5 s: salen de la BD.
+    9. **Volver a analizar** (con confirmación): la corrección **se conserva**, también tras recargar la página.
+    10. Modo oscuro y ancho de móvil (420 px) correctos. Sin errores en la consola.
+  - Las correcciones de prueba se quitaron después y la canción se volvió a analizar. Queda en tu lista como ejemplo; puedes borrarla.
+  - `iniciar.bat` probado en seco (una copia en la que el worker escribe en un archivo): abre las dos ventanas con su cola cada una.
+  - `D:\Pistas` y la carpeta del separador **sin cambios**: 0 archivos modificados hoy.
+
 ## Problemas conocidos / pendientes
 
+- **Acordes que aparecen "progresivamente": en la práctica, casi de golpe.** El motor sí los entrega por bloques y Laravel los guarda uno a uno. Pero el análisis en la GPU dura unos 3 s, después de 3–4 s de arranque de Python, y la página consulta cada 2 s. Por eso se ven 1 o 2 estados intermedios ("Analizando… 8 %" y luego casi todos los acordes) y no un goteo lento.
+- **Power chords (sin tercera)**, típicos del rock y el metal: el modelo duda entre mayor y menor (B o Bm). En el tema de metal en Si menor, el 84 % del tiempo quedó en acordes de la tonalidad. Se puede corregir a mano.
+- **Tonalidad relativa:** entre una tonalidad mayor y su relativa menor (C mayor / A menor) se decide por el acorde que más suena y por cómo empieza y termina la canción. Puede equivocarse en canciones ambiguas. Mientras se analiza, la tonalidad puede cambiar ("provisional").
+- **Corregir un acorde cambia su nombre, no sus tiempos.** Para mover dónde empieza o termina habría que añadir una función de edición de tiempos.
+- **Acordes muy cortos** en la vista ampliada pueden mostrar el nombre cortado (por ejemplo "Esu" por Esus4). El nombre completo aparece al pasar el ratón y en la hoja de acordes.
+- **madmom no se pudo instalar en Windows** porque necesita el compilador de Visual Studio. Se evaluó importando su código sin los 3 módulos compilados, que no se usan para acordes. No se usa en la app.
+- **Espacio en disco:** el motor de acordes tiene su propio torch con CUDA (unos 4,5 GB en `tools/acordes/.venv`), aparte del del separador. Es el precio de mantener los dos entornos separados, como se pidió.
+- **La separación tarda unos 4 s más** que antes, por el cálculo de las ondas (unos 0,6 s por pista).
+
 - **Avisos de onnxruntime en el log** (`Failed to load cublas64_13.dll`, "onnxruntime-gpu is built with CUDA 13.x"): vienen del entorno de audio-separator. No afectan, porque `htdemucs_6s` usa PyTorch con CUDA 12.8, que funciona. Solo importarían con modelos ONNX (MDX). No se toca porque está en la carpeta `separador`.
-- **Tras actualizar el código** hay que cerrar y volver a abrir `iniciar.bat`: el worker carga el código al arrancar.
+- **Tras actualizar el código** hay que cerrar **las dos ventanas** y volver a abrir `iniciar.bat`: cada worker carga el código al arrancar.
 - **Solo hay un modelo disponible** (`htdemucs_6s.yaml`), porque es el único descargado en `SEPARATOR_MODELS_DIR`. Para usar otro (`htdemucs_ft.yaml`, `htdemucs.yaml`), descárgalo tú con audio-separator en esa carpeta; aparecerá solo en Preferencias. La app nunca descarga modelos por su cuenta.
 - **Servidor de desarrollo de Vite:** durante las pruebas había un `npm run dev` activo (lo indica `public/hot`). Para uso diario no hace falta: basta con `npm run build`. Si cierras ese servidor y la web se ve en blanco, borra el archivo `public/hot`.
 - **Memoria del mezclador:** Web Audio guarda las pistas decodificadas en la RAM del navegador. Son unos 90 MB por pista para una canción de 4–5 minutos, así que unos 550 MB para 6 pistas. Con canciones muy largas (más de 20 minutos) el navegador podría quedarse sin memoria. Pasaba igual con el `mezclador.html` original.
