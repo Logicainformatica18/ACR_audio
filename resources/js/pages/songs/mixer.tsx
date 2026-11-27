@@ -1,14 +1,27 @@
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { ChordEditDialog } from '@/components/mixer/chord-edit-dialog';
+import { ChordLane, ChordZoom } from '@/components/mixer/chord-lane';
+import { ChordSheet } from '@/components/mixer/chord-sheet';
 import { TrackLane } from '@/components/mixer/track-lane';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
+import {
+    chordIndexAt,
+    chordLabel,
+    decodePeaks,
+    isAnalyzing,
+    nextChordIndex,
+    useChords,
+    type ChordAnalysis,
+    type ChordItem,
+} from '@/lib/mixer/chords';
 import { computeEnvelope, isAudible, loadTrack, mergedSilences, MixerEngine, type MixTrackState, type Silence } from '@/lib/mixer/engine';
 import { clamp, fmt, fmtR, parseTime } from '@/lib/mixer/time';
 import { useAutosave, type SaveStatus } from '@/lib/mixer/use-autosave';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem, type Song } from '@/types';
 import { Head, Link } from '@inertiajs/react';
-import { AlertCircle, ArrowLeft, Check, Download, LoaderCircle, Pause, Play, SkipBack } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Download, ListMusic, LoaderCircle, Pause, Play, RefreshCw, SkipBack } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface MixerTrack {
@@ -18,6 +31,7 @@ interface MixerTrack {
     color: string;
     size: number;
     url: string;
+    peaks: string | null; // forma de onda precalculada (base64) o null
     volume: number;
     muted: boolean;
     solo: boolean;
@@ -28,11 +42,23 @@ interface Props {
     song: Song;
     tracks: MixerTrack[];
     preferences: { master_volume: number; keyboard_shortcuts: boolean };
+    analysis: ChordAnalysis;
+    chords: ChordItem[];
 }
 
 let nextKey = 1;
 
-export default function Mixer({ song, tracks, preferences }: Props) {
+const SHEET_KEY = 'acr.mixer.chordSheet';
+
+function readSheetPref(): boolean {
+    try {
+        return window.localStorage.getItem(SHEET_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+export default function Mixer({ song, tracks, preferences, analysis: initialAnalysis, chords: initialChords }: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Canciones', href: '/songs' },
         { title: song.title, href: `/songs/${song.id}` },
@@ -50,7 +76,15 @@ export default function Mixer({ song, tracks, preferences }: Props) {
     const [loadProgress, setLoadProgress] = useState<Record<number, number>>({});
     const [ready, setReady] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [envelopes, setEnvelopes] = useState<Record<number, Float32Array>>({});
+    // Formas de onda precalculadas en el servidor: se dibujan antes de descargar el audio.
+    const [envelopes, setEnvelopes] = useState<Record<number, Float32Array>>(() => {
+        const env: Record<number, Float32Array> = {};
+        for (const t of tracks) {
+            const peaks = decodePeaks(t.peaks);
+            if (peaks) env[t.id] = peaks;
+        }
+        return env;
+    });
     const [duration, setDuration] = useState(song.duration ?? 0);
     const [playing, setPlaying] = useState(false);
     const [message, setMessage] = useState('');
@@ -64,6 +98,82 @@ export default function Mixer({ song, tracks, preferences }: Props) {
     const setHead = (key: string, el: HTMLDivElement | null) => {
         if (el) heads.current.set(key, el);
         else heads.current.delete(key);
+    };
+
+    // ----- Acordes -----
+    const { chords, analysis, editChord, reanalyze, pendingSince } = useChords(song.id, initialChords, initialAnalysis);
+    const analyzing = isAnalyzing(analysis);
+    const [editingChord, setEditingChord] = useState<ChordItem | null>(null);
+    const [confirmReanalyze, setConfirmReanalyze] = useState(false);
+    const [showSheet, setShowSheet] = useState(readSheetPref);
+    const [clock, setClock] = useState(() => Date.now());
+    const chordsRef = useRef(chords);
+    chordsRef.current = chords;
+    const chordUI = useRef({
+        lastId: -2,
+        blocks: new Map<number, HTMLButtonElement>(),
+        zoom: new Map<number, HTMLButtonElement>(),
+        chips: new Map<number, HTMLButtonElement>(),
+        sheet: null as HTMLDivElement | null,
+    });
+    const chordNowRef = useRef<HTMLSpanElement>(null);
+    const zoomMove = useRef<((t: number) => void) | null>(null);
+    const setZoomControl = useCallback((fn: ((t: number) => void) | null) => {
+        zoomMove.current = fn;
+        if (fn) fn(engineRef.current?.now() ?? 0);
+    }, []);
+    const chordNextRef = useRef<HTMLSpanElement>(null);
+
+    // Hasta dónde llegó el análisis en curso (los editados a mano no cuentan).
+    const frontier = analyzing ? chords.reduce((m, c) => (c.edited ? m : Math.max(m, c.end)), 0) : null;
+
+    /** Resalta el acorde que suena en t (fila, hoja e indicador grande). */
+    const updateChordUI = useCallback((t: number, force = false) => {
+        const ui = chordUI.current;
+        const list = chordsRef.current;
+        const i = chordIndexAt(list, t);
+        const id = i >= 0 ? list[i].id : -1;
+        if (id === ui.lastId && !force) return;
+        for (const map of [ui.blocks, ui.zoom, ui.chips]) for (const el of map.values()) el.dataset.current = 'false';
+        ui.lastId = id;
+        const block = ui.blocks.get(id);
+        const zoomBlock = ui.zoom.get(id);
+        const chip = ui.chips.get(id);
+        if (block) block.dataset.current = 'true';
+        if (zoomBlock) zoomBlock.dataset.current = 'true';
+        if (chip) {
+            chip.dataset.current = 'true';
+            // Mantiene visible el acorde actual dentro de la hoja (sin mover la página).
+            const box = ui.sheet;
+            if (box && (chip.offsetTop < box.scrollTop || chip.offsetTop + chip.offsetHeight > box.scrollTop + box.clientHeight)) {
+                box.scrollTop = chip.offsetTop - box.clientHeight / 3;
+            }
+        }
+        const j = nextChordIndex(list, i, t);
+        if (chordNowRef.current) chordNowRef.current.textContent = i >= 0 ? chordLabel(list[i].chord) : '—';
+        if (chordNextRef.current) chordNextRef.current.textContent = j >= 0 ? list[j].chord : '';
+    }, []);
+
+    useEffect(() => {
+        updateChordUI(engineRef.current?.now() ?? 0, true);
+    }, [chords, showSheet, updateChordUI]);
+
+    // Para el aviso "¿está abierta la ventana ACORDES?" mientras sigue en cola.
+    useEffect(() => {
+        if (analysis.status !== 'pending') return;
+        const id = window.setInterval(() => setClock(Date.now()), 2000);
+        return () => window.clearInterval(id);
+    }, [analysis.status]);
+
+    const toggleSheet = () => {
+        setShowSheet((v) => {
+            try {
+                window.localStorage.setItem(SHEET_KEY, v ? '0' : '1');
+            } catch {
+                /* sin almacenamiento: solo dura esta visita */
+            }
+            return !v;
+        });
     };
 
     const meta = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks]);
@@ -96,7 +206,8 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                         const buf = await loadTrack(
                             engine.ctx,
                             track.url,
-                            (loaded, total) => setLoadProgress((p) => ({ ...p, [track.id]: Math.round((loaded / (total ?? track.size ?? loaded)) * 100) })),
+                            (loaded, total) =>
+                                setLoadProgress((p) => ({ ...p, [track.id]: Math.round((loaded / (total ?? track.size ?? loaded)) * 100) })),
                             abort.signal,
                         );
                         buffers.set(track.id, buf);
@@ -107,9 +218,13 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                 if (cancelled) return;
 
                 for (const t of tracks) engine.addTrack(t.id, buffers.get(t.id)!);
-                const env: Record<number, Float32Array> = {};
-                for (const t of tracks) env[t.id] = computeEnvelope(buffers.get(t.id)!, engine.duration);
-                setEnvelopes(env);
+                // Solo se calcula la onda de las pistas que no la traen precalculada.
+                const missing = tracks.filter((t) => !t.peaks);
+                if (missing.length) {
+                    const env: Record<number, Float32Array> = {};
+                    for (const t of missing) env[t.id] = computeEnvelope(buffers.get(t.id)!, engine.duration);
+                    setEnvelopes((prev) => ({ ...prev, ...env }));
+                }
                 setDuration(engine.duration);
                 engine.onEnded = () => setPlaying(false);
                 setReady(true);
@@ -139,8 +254,10 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                 const sil = mergedSilences(silences, id).some((r) => t >= r.start && t < r.end);
                 row.dataset.silenced = sil ? 'true' : 'false';
             }
+            updateChordUI(t);
+            zoomMove.current?.(t);
         },
-        [duration, silences],
+        [duration, silences, updateChordUI],
     );
 
     useEffect(() => {
@@ -237,7 +354,15 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                 {/* Barra de transporte fija arriba */}
                 <div className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10 border-b backdrop-blur">
                     <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-                        <Button variant="outline" size="icon" className="rounded-full" onClick={() => seek(0)} disabled={!ready} aria-label="Volver al inicio" title="Volver al inicio (Inicio)">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="rounded-full"
+                            onClick={() => seek(0)}
+                            disabled={!ready}
+                            aria-label="Volver al inicio"
+                            title="Volver al inicio (Inicio)"
+                        >
                             <SkipBack />
                         </Button>
                         <button
@@ -253,6 +378,17 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                         <div className="text-2xl font-semibold tabular-nums">
                             <span ref={timeRef}>0:00</span> <span className="text-muted-foreground text-lg font-medium">/ {fmt(duration)}</span>
                         </div>
+                        {(chords.length > 0 || analyzing) && (
+                            <div className="flex min-w-[9rem] items-baseline gap-2" title="Acorde que suena ahora y el siguiente">
+                                <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Acorde</span>
+                                <span ref={chordNowRef} className="text-4xl leading-none font-bold text-[var(--mx-accent)]">
+                                    —
+                                </span>
+                                <span className="text-muted-foreground text-lg font-semibold">
+                                    → <span ref={chordNextRef} />
+                                </span>
+                            </div>
+                        )}
                         <label className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
                             Volumen general
                             <input
@@ -276,8 +412,8 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                                 {song.title}
                             </h1>
                             <p className="text-muted-foreground text-sm">
-                                Clic en una pista para saltar a ese momento. Arrastra sobre una pista para programar un silencio. <strong>M</strong> silencia la
-                                pista y <strong>S</strong> deja sonar solo esa.
+                                Clic en una pista para saltar a ese momento. Arrastra sobre una pista para programar un silencio. <strong>M</strong>{' '}
+                                silencia la pista y <strong>S</strong> deja sonar solo esa.
                             </p>
                         </div>
                         <Button variant="ghost" size="sm" asChild>
@@ -300,7 +436,14 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                     {!ready && !loadError && (
                         <div className="space-y-2">
                             <p className="text-sm">Cargando pistas… {totalProgress}%</p>
-                            <div className="bg-muted h-2 overflow-hidden rounded-full" role="progressbar" aria-valuenow={totalProgress} aria-valuemin={0} aria-valuemax={100} aria-label="Cargando pistas">
+                            <div
+                                className="bg-muted h-2 overflow-hidden rounded-full"
+                                role="progressbar"
+                                aria-valuenow={totalProgress}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-label="Cargando pistas"
+                            >
                                 <div className="h-full bg-[var(--mx-accent)] transition-[width]" style={{ width: `${totalProgress}%` }} />
                             </div>
                         </div>
@@ -312,6 +455,45 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[230px_1fr]">
                             <div className="hidden md:block" />
                             <Ruler duration={duration} onSeek={seek} headRef={(el) => setHead('ruler', el)} />
+                        </div>
+
+                        {/* Acordes, alineados con la línea de tiempo */}
+                        <div className="grid grid-cols-1 gap-1 md:grid-cols-[230px_1fr] md:gap-2.5">
+                            <ChordInfo
+                                analysis={analysis}
+                                hasChords={chords.length > 0}
+                                waitingWorker={analysis.status === 'pending' && pendingSince !== null && clock - pendingSince > 8000}
+                                onReanalyze={() => setConfirmReanalyze(true)}
+                            />
+                            <div className="grid min-w-0 gap-1">
+                                <ChordLane
+                                    chords={chords}
+                                    analysis={analysis}
+                                    duration={duration}
+                                    frontier={frontier}
+                                    onSeek={seek}
+                                    onEdit={setEditingChord}
+                                    headRef={(el) => setHead('chords', el)}
+                                    blockRef={(id, el) => {
+                                        if (el) chordUI.current.blocks.set(id, el);
+                                        else chordUI.current.blocks.delete(id);
+                                    }}
+                                />
+                                {(chords.length > 0 || analyzing) && (
+                                    <ChordZoom
+                                        chords={chords}
+                                        duration={duration}
+                                        frontier={frontier}
+                                        onSeek={seek}
+                                        onEdit={setEditingChord}
+                                        controlRef={setZoomControl}
+                                        blockRef={(id, el) => {
+                                            if (el) chordUI.current.zoom.set(id, el);
+                                            else chordUI.current.zoom.delete(id);
+                                        }}
+                                    />
+                                )}
+                            </div>
                         </div>
 
                         {mix.map((t, i) => {
@@ -331,7 +513,10 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                                         className="bg-card grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1 rounded-md border border-l-[5px] px-2.5 py-2"
                                         style={{ borderLeftColor: m.color }}
                                     >
-                                        <span className={cn('truncate text-xl leading-tight font-semibold', !audible && 'text-muted-foreground')} title={m.label}>
+                                        <span
+                                            className={cn('truncate text-xl leading-tight font-semibold', !audible && 'text-muted-foreground')}
+                                            title={m.label}
+                                        >
                                             {m.label}
                                             <span className="text-muted-foreground ml-1.5 hidden align-middle text-xs font-normal group-data-[silenced=true]:inline">
                                                 en silencio
@@ -379,11 +564,14 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                                                 onChange={(e) => updateTrack(t.id, { volume: +e.target.value })}
                                                 className="w-full accent-[var(--mx-accent)]"
                                             />
-                                            <span className="text-muted-foreground w-9 text-right text-xs tabular-nums">{Math.round(t.volume * 100)}%</span>
+                                            <span className="text-muted-foreground w-9 text-right text-xs tabular-nums">
+                                                {Math.round(t.volume * 100)}%
+                                            </span>
                                         </label>
                                     </div>
-                                    {ready ? (
+                                    {ready || envelopes[t.id] ? (
                                         <TrackLane
+                                            loading={ready ? null : (loadProgress[t.id] ?? 0)}
                                             label={m.label}
                                             color={m.color}
                                             duration={duration}
@@ -405,6 +593,49 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                         })}
                     </div>
 
+                    {(chords.length > 0 || analyzing) && (
+                        <section className="space-y-3" aria-labelledby="hoja">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <h2 id="hoja" className="text-xl font-semibold">
+                                    Hoja de acordes
+                                </h2>
+                                {analysis.key && <span className="text-muted-foreground text-sm">Tonalidad: {analysis.key}</span>}
+                                <Button variant="outline" size="sm" onClick={toggleSheet} aria-expanded={showSheet} className="ml-auto">
+                                    <ListMusic /> {showSheet ? 'Ocultar hoja' : 'Mostrar hoja'}
+                                </Button>
+                            </div>
+                            {showSheet && (
+                                <ChordSheet
+                                    chords={chords}
+                                    analyzing={analyzing}
+                                    onSeek={seek}
+                                    onEdit={setEditingChord}
+                                    chipRef={(id, el) => {
+                                        if (el) chordUI.current.chips.set(id, el);
+                                        else chordUI.current.chips.delete(id);
+                                    }}
+                                    containerRef={(el) => {
+                                        chordUI.current.sheet = el;
+                                    }}
+                                />
+                            )}
+                        </section>
+                    )}
+
+                    <ChordEditDialog chord={editingChord} onClose={() => setEditingChord(null)} onSave={editChord} />
+                    <ConfirmDialog
+                        open={confirmReanalyze}
+                        onOpenChange={setConfirmReanalyze}
+                        title="¿Volver a analizar los acordes?"
+                        description="Se reemplazarán los acordes detectados automáticamente. Los que corregiste a mano se conservan."
+                        confirmLabel="Volver a analizar"
+                        onConfirm={async () => {
+                            setConfirmReanalyze(false);
+                            const err = await reanalyze();
+                            setMessage(err ?? 'Análisis de acordes en cola. Los acordes nuevos aparecerán a medida que se detecten.');
+                        }}
+                    />
+
                     <SilencesPanel
                         tracks={tracks}
                         silences={silences}
@@ -422,12 +653,60 @@ export default function Mixer({ song, tracks, preferences }: Props) {
 
                     {preferences.keyboard_shortcuts && (
                         <p className="text-muted-foreground pb-8 text-sm">
-                            Atajos: <Kbd>Espacio</Kbd> reproduce o pausa, <Kbd>1</Kbd> a <Kbd>9</Kbd> silencian cada pista, <Kbd>Inicio</Kbd> vuelve al principio.
+                            Atajos: <Kbd>Espacio</Kbd> reproduce o pausa, <Kbd>1</Kbd> a <Kbd>9</Kbd> silencian cada pista, <Kbd>Inicio</Kbd> vuelve
+                            al principio.
                         </p>
                     )}
                 </div>
             </div>
         </AppLayout>
+    );
+}
+
+function ChordInfo({
+    analysis,
+    hasChords,
+    waitingWorker,
+    onReanalyze,
+}: {
+    analysis: ChordAnalysis;
+    hasChords: boolean;
+    waitingWorker: boolean;
+    onReanalyze: () => void;
+}) {
+    const busy = isAnalyzing(analysis);
+    return (
+        <div className="bg-card flex min-w-0 flex-col justify-center gap-0.5 rounded-md border border-l-[5px] border-l-[var(--mx-accent)] px-2.5 py-1.5 text-sm">
+            <span className="text-xl leading-tight font-semibold">Acordes</span>
+            {busy ? (
+                <span className="text-muted-foreground flex items-center gap-1.5" role="status">
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    {analysis.status === 'pending' ? 'En cola…' : `Analizando… ${analysis.progress}%`}
+                </span>
+            ) : analysis.status === 'failed' ? (
+                <span className="text-red-700 dark:text-red-400" role="alert" title={analysis.error ?? ''}>
+                    Error: {analysis.error}
+                </span>
+            ) : null}
+            {waitingWorker && <span className="text-muted-foreground text-xs">¿Está abierta la ventana «ACORDES» de iniciar.bat?</span>}
+            {analysis.key && (
+                <span className="text-muted-foreground">
+                    {busy ? 'Tonalidad (provisional)' : 'Tonalidad'}: <strong className="text-foreground font-semibold">{analysis.key}</strong>
+                </span>
+            )}
+            {!busy && (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-1 h-7 self-start px-2"
+                    onClick={onReanalyze}
+                    title={hasChords ? 'Volver a analizar (tus correcciones se conservan)' : 'Analizar acordes'}
+                >
+                    <RefreshCw /> {hasChords ? 'Volver a analizar' : 'Analizar acordes'}
+                </Button>
+            )}
+            <span className="text-muted-foreground mt-1 hidden text-xs md:block">Doble clic o clic derecho en un acorde para corregirlo.</span>
+        </div>
     );
 }
 
@@ -538,14 +817,19 @@ function SilencesPanel({ tracks, silences, duration, disabled, now, onAdd, onRem
                     Silencios programados
                 </h2>
                 <p className="text-muted-foreground max-w-prose text-sm">
-                    Cada silencio apaga una pista entre dos momentos de la canción. Se guardan automáticamente y vuelven la próxima vez que abras esta canción.
+                    Cada silencio apaga una pista entre dos momentos de la canción. Se guardan automáticamente y vuelven la próxima vez que abras esta
+                    canción.
                 </p>
             </div>
 
             <fieldset disabled={disabled} className="bg-card flex flex-wrap items-end gap-x-3.5 gap-y-2.5 rounded-lg border p-3.5">
                 <label className="text-muted-foreground flex flex-col gap-1 text-sm">
                     Pista
-                    <select value={trackId} onChange={(e) => setTrackId(+e.target.value)} className="bg-background text-foreground min-w-40 rounded-md border px-2 py-1.5">
+                    <select
+                        value={trackId}
+                        onChange={(e) => setTrackId(+e.target.value)}
+                        className="bg-background text-foreground min-w-40 rounded-md border px-2 py-1.5"
+                    >
                         {tracks.map((t) => (
                             <option key={t.id} value={t.id}>
                                 {t.label}
@@ -574,7 +858,10 @@ function SilencesPanel({ tracks, silences, duration, disabled, now, onAdd, onRem
                             const t = byId.get(s.trackId);
                             if (!t) return null;
                             return (
-                                <li key={s.key} className="bg-card grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 rounded-md border px-3 py-2 text-sm">
+                                <li
+                                    key={s.key}
+                                    className="bg-card grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 rounded-md border px-3 py-2 text-sm"
+                                >
                                     <span className="size-3 rounded-full" style={{ background: t.color }} aria-hidden />
                                     <span className="truncate">{t.label}</span>
                                     <span className="text-muted-foreground tabular-nums">
@@ -611,7 +898,21 @@ function SilencesPanel({ tracks, silences, duration, disabled, now, onAdd, onRem
     );
 }
 
-function TimeField({ id, label, value, onChange, placeholder, onNow }: { id: string; label: string; value: string; onChange: (v: string) => void; placeholder: string; onNow: () => void }) {
+function TimeField({
+    id,
+    label,
+    value,
+    onChange,
+    placeholder,
+    onNow,
+}: {
+    id: string;
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    placeholder: string;
+    onNow: () => void;
+}) {
     return (
         <div className="text-muted-foreground flex flex-col gap-1 text-sm">
             <label htmlFor={id}>{label}</label>

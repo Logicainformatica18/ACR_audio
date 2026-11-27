@@ -13,12 +13,26 @@ interface Props {
     onAddSilence: (start: number, end: number) => void;
     onRemoveSilence: (key: number) => void;
     headRef: (el: HTMLDivElement | null) => void;
+    /** % de descarga mientras el audio aún no está listo (la onda ya se ve); null = listo. */
+    loading?: number | null;
 }
 
 const pct = (t: number, d: number) => (d ? clamp(t / d, 0, 1) * 100 : 0) + '%';
 
 /** Carril de una pista: onda, silencios (rayados) y cabezal. Clic = saltar; arrastrar = programar silencio. */
-export function TrackLane({ label, color, duration, envelope, silences, dimmed, onSeek, onAddSilence, onRemoveSilence, headRef }: Props) {
+export function TrackLane({
+    label,
+    color,
+    duration,
+    envelope,
+    silences,
+    dimmed,
+    onSeek,
+    onAddSilence,
+    onRemoveSilence,
+    headRef,
+    loading = null,
+}: Props) {
     const laneRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [ghost, setGhost] = useState<{ a: number; b: number } | null>(null);
@@ -57,7 +71,7 @@ export function TrackLane({ label, color, duration, envelope, silences, dimmed, 
     }, [envelope, color]);
 
     const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-        if (e.button !== 0 || (e.target as HTMLElement).closest('[data-silence]')) return;
+        if (loading !== null || e.button !== 0 || (e.target as HTMLElement).closest('[data-silence]')) return;
         const lane = laneRef.current!;
         const rect = lane.getBoundingClientRect();
         const tAt = (x: number) => clamp((x - rect.left) / rect.width, 0, 1) * duration;
@@ -94,7 +108,12 @@ export function TrackLane({ label, color, duration, envelope, silences, dimmed, 
             className="relative min-h-[76px] cursor-crosshair touch-pan-y overflow-hidden rounded-md bg-[var(--mx-lane)] select-none"
             aria-label={`Pista ${label}: haz clic para saltar, arrastra para programar un silencio`}
         >
-            <canvas ref={canvasRef} className={'absolute inset-0 size-full transition-opacity ' + (dimmed ? 'opacity-25' : '')} />
+            <canvas ref={canvasRef} className={'absolute inset-0 size-full transition-opacity ' + (dimmed || loading !== null ? 'opacity-25' : '')} />
+            {loading !== null && (
+                <div className="text-muted-foreground absolute inset-0 grid cursor-wait place-items-center text-sm">
+                    <span className="bg-background/80 rounded px-2 py-0.5">Cargando audio… {loading}%</span>
+                </div>
+            )}
             {silences.map((s) => (
                 <div
                     key={s.key}
