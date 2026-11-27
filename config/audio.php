@@ -28,6 +28,24 @@ return [
         'timeout' => (int) env('SEPARATOR_TIMEOUT', 3600),
     ],
 
+    // Motor de acordes (tools/acordes, con su propio .venv). Las rutas vacías
+    // usan las del propio proyecto. Admiten rutas absolutas o relativas al proyecto.
+    'chords' => [
+        'python' => env('CHORDS_PYTHON') ?: 'tools/acordes/.venv/Scripts/python.exe',
+        'script' => env('CHORDS_SCRIPT') ?: 'tools/acordes/acordes.py',
+        'models_dir' => env('CHORDS_MODELS_DIR') ?: 'tools/acordes/modelos',
+        // btc-large (vocabulario grande: 7, maj7, m7, dim, sus...) o btc-majmin
+        'model' => env('CHORDS_MODEL', 'btc-large'),
+        'timeout' => (int) env('CHORDS_TIMEOUT', 900),
+        // Pistas que se mezclan para analizar (sin batería ni voz).
+        'stems' => ['guitar', 'bass', 'piano', 'other'],
+        // Archivo de pesos de cada modelo (para comprobar que está descargado).
+        'weights' => [
+            'btc-large' => 'btc_model_large_voca.pt',
+            'btc-majmin' => 'btc_model.pt',
+        ],
+    ],
+
     // Modelos que el usuario puede elegir en sus preferencias.
     // La clave es el nombre que se pasa a audio-separator con -m.
     'models' => [

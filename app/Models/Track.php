@@ -17,7 +17,11 @@ class Track extends Model
         'file_name',
         'size',
         'position',
+        'peaks',
     ];
+
+    /** La forma de onda solo se envía al mezclador. */
+    protected $hidden = ['peaks'];
 
     protected function casts(): array
     {

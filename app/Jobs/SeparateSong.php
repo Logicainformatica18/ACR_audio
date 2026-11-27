@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Song;
 use App\Services\Separator;
+use App\Services\Waveform;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -176,6 +177,12 @@ class SeparateSong implements ShouldQueue
 
         $disk->deleteDirectory($work);
 
+        // Forma de onda de cada pista, para que el mezclador no la calcule cada vez.
+        // Si falla no pasa nada: el mezclador la calcula como antes.
+        foreach ($song->tracks()->get() as $track) {
+            $track->update(['peaks' => Waveform::compute($disk->path($track->path()))]);
+        }
+
         $song->update([
             'status' => Song::STATUS_READY,
             'duration' => Separator::probeDuration($input),
@@ -183,6 +190,9 @@ class SeparateSong implements ShouldQueue
             'log' => self::cleanLog($log),
         ]);
         Cache::forget(self::progressKey($song->id));
+
+        // Acordes: a su propia cola ("acordes"), que avanza en paralelo.
+        $song->queueChordAnalysis();
     }
 
     /** Se llama si el trabajo lanza una excepción no controlada o supera el tiempo. */

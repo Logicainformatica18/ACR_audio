@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ChordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MixerController;
 use App\Http\Controllers\SongController;
@@ -27,6 +28,14 @@ Route::middleware('auth')->group(function () {
         ->whereNumber(['song', 'track'])
         ->scopeBindings()
         ->name('songs.tracks.audio');
+
+    // Acordes
+    Route::get('songs/{song}/chords', [ChordController::class, 'index'])->whereNumber('song')->name('songs.chords.index');
+    Route::post('songs/{song}/chords/analyze', [ChordController::class, 'analyze'])->whereNumber('song')->name('songs.chords.analyze');
+    Route::patch('songs/{song}/chords/{chord}', [ChordController::class, 'update'])
+        ->whereNumber(['song', 'chord'])
+        ->scopeBindings()
+        ->name('songs.chords.update');
 });
 
 require __DIR__.'/settings.php';

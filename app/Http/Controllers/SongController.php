@@ -7,6 +7,7 @@ use App\Http\Resources\SongResource;
 use App\Jobs\SeparateSong;
 use App\Models\Song;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -156,6 +157,9 @@ class SongController extends Controller
         if ($song->status === Song::STATUS_PROCESSING) {
             return response()->json(['message' => 'No se puede borrar mientras se está separando. Espera a que termine.'], 409);
         }
+        if ($song->chords_status === Song::STATUS_PROCESSING) {
+            return response()->json(['message' => 'No se puede borrar mientras se analizan sus acordes. Espera unos segundos.'], 409);
+        }
 
         $directory = $song->directory(); // {user_id}/{song_id}: solo ids
         $song->delete(); // cascada en BD: tracks, track_settings, scheduled_silences
@@ -165,7 +169,7 @@ class SongController extends Controller
         return response()->json(['deleted' => true]);
     }
 
-    /** @return \Illuminate\Database\Eloquent\Collection<int, Song> */
+    /** @return Collection<int, Song> */
     private function userSongs(User $user)
     {
         $query = Song::ownedBy($user)->withCount('tracks');

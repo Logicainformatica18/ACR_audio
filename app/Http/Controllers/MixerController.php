@@ -40,6 +40,7 @@ class MixerController extends Controller
                 'color' => $track->color(),
                 'size' => $track->size,
                 'url' => route('songs.tracks.audio', [$song, $track]),
+                'peaks' => $track->peaks, // forma de onda precalculada (base64) o null
                 'volume' => $track->setting->volume,
                 'muted' => $track->setting->muted,
                 'solo' => $track->setting->solo,
@@ -52,6 +53,8 @@ class MixerController extends Controller
                 'master_volume' => $prefs->master_volume,
                 'keyboard_shortcuts' => $prefs->keyboard_shortcuts,
             ],
+            // Acordes guardados: salen de la BD al instante, sin volver a analizar.
+            ...ChordController::payload($song),
         ]);
     }
 

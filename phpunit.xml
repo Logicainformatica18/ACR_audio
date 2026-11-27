@@ -33,6 +33,9 @@
         <!-- Los tests NUNCA ejecutan el audio-separator real -->
         <env name="SEPARATOR_BIN" value=""/>
         <env name="SEPARATOR_MODELS_DIR" value=""/>
+        <!-- ...ni el motor de acordes real (ruta que no existe) -->
+        <env name="CHORDS_PYTHON" value="storage/framework/testing/no-existe/python.exe"/>
+        <env name="CHORDS_MODEL" value="btc-large"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
     </php>
