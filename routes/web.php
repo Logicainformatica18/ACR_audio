@@ -1,14 +1,14 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MixerController;
 use App\Http\Controllers\SongController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::redirect('/', '/songs')->name('home');
 
 Route::middleware('auth')->group(function () {
-    Route::get('dashboard', fn () => Inertia::render('dashboard'))->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     // Canciones
     Route::get('songs', [SongController::class, 'index'])->name('songs.index');
@@ -16,6 +16,9 @@ Route::middleware('auth')->group(function () {
     Route::get('songs/status', [SongController::class, 'status'])->name('songs.status');
     Route::get('songs/{song}/log', [SongController::class, 'log'])->whereNumber('song')->name('songs.log');
     Route::post('songs/{song}/retry', [SongController::class, 'retry'])->whereNumber('song')->name('songs.retry');
+
+    Route::patch('songs/{song}', [SongController::class, 'update'])->whereNumber('song')->name('songs.update');
+    Route::delete('songs/{song}', [SongController::class, 'destroy'])->whereNumber('song')->name('songs.destroy');
 
     // Mezclador
     Route::get('songs/{song}', [MixerController::class, 'show'])->whereNumber('song')->name('songs.show');

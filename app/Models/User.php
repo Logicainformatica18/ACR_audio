@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
@@ -39,6 +40,17 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Al borrar la cuenta, la base de datos borra en cascada canciones,
+     * pistas, ajustes y silencios; aquí se borran también los archivos.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user) {
+            Storage::disk('audio')->deleteDirectory((string) (int) $user->id);
+        });
     }
 
     public function songs(): HasMany

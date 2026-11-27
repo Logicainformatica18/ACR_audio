@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\PasswordController;
+use App\Http\Controllers\Settings\PreferenceController;
 use App\Http\Controllers\Settings\ProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -14,6 +15,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
     Route::put('settings/password', [PasswordController::class, 'update'])->name('password.update');
+
+    Route::get('settings/preferences', [PreferenceController::class, 'edit'])->name('preferences.edit');
+    Route::put('settings/preferences', [PreferenceController::class, 'update'])->name('preferences.update');
+    Route::patch('settings/preferences/sort', [PreferenceController::class, 'updateSort'])->name('preferences.sort');
 
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');

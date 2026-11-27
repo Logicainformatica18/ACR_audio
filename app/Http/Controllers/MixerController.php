@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -59,7 +60,7 @@ class MixerController extends Controller
      * parciales (cabecera Range -> 206 Partial Content) y nunca carga el
      * archivo entero en memoria.
      */
-    public function audio(Song $song, Track $track): BinaryFileResponse
+    public function audio(Request $request, Song $song, Track $track): BinaryFileResponse
     {
         $this->authorize('view', $song);
         abort_unless($track->song_id === $song->id, 404);
@@ -77,11 +78,31 @@ class MixerController extends Controller
             default => 'application/octet-stream',
         };
 
-        return response()->file($disk->path($path), [
+        $headers = [
             'Content-Type' => $mime,
             'Cache-Control' => 'private, max-age=86400',
             'X-Content-Type-Options' => 'nosniff',
-        ]);
+        ];
+
+        // ?download=1 -> descarga con un nombre legible: "Mi canción - Voz.flac".
+        // El título solo se usa en la cabecera (saneado por Symfony), nunca en la ruta del archivo.
+        if ($request->boolean('download')) {
+            $ext = pathinfo($track->file_name, PATHINFO_EXTENSION);
+            $name = self::downloadName($song->title, $track->label(), $ext);
+
+            return response()->download($disk->path($path), $name, $headers);
+        }
+
+        return response()->file($disk->path($path), $headers);
+    }
+
+    /** Nombre de descarga sin caracteres prohibidos en Windows. */
+    public static function downloadName(string $title, string $label, string $ext): string
+    {
+        $base = preg_replace('/[\\\\\/:*?"<>|\x00-\x1F]+/u', '', "{$title} - {$label}") ?? 'pista';
+        $base = trim(preg_replace('/\s+/u', ' ', $base) ?? '', ' .');
+
+        return ($base === '' ? 'pista' : Str::limit($base, 150, '')).'.'.$ext;
     }
 
     /** Guardado automático: reemplaza ajustes de pista, silencios y volumen general. */

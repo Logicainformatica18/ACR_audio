@@ -28,6 +28,8 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- Segunda barrera: aunque un test no use Storage::fake, nunca apunta a los audios reales -->
+        <env name="AUDIO_STORAGE_PATH" value="storage/framework/testing/audio-real-disk-guard"/>
         <!-- Los tests NUNCA ejecutan el audio-separator real -->
         <env name="SEPARATOR_BIN" value=""/>
         <env name="SEPARATOR_MODELS_DIR" value=""/>

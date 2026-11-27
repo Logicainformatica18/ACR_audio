@@ -35,7 +35,7 @@ docs/                                 esta documentación
 | `jobs`, `failed_jobs`, `job_batches` | Cola de trabajos (driver `database`) | — |
 | `sessions`, `cache`, `password_reset_tokens` | Infraestructura de Laravel | — |
 
-Al borrar un usuario se borran en cascada sus canciones, pistas, ajustes y silencios **en la base de datos**. Los archivos del disco los borra la aplicación (ver Fase 5).
+Al borrar un usuario se borran en cascada sus canciones, pistas, ajustes y silencios **en la base de datos**. Sus archivos los borra el evento `User::deleting`, que elimina `audio/{user_id}`. Al borrar una canción, `SongController@destroy` elimina `audio/{user_id}/{song_id}`.
 
 ### Estados de una canción (`songs.status`)
 
@@ -161,6 +161,17 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | GET | `/songs/{id}` | Mezclador (solo el dueño y solo si está lista) |
 | GET | `/songs/{id}/tracks/{pista}/audio` | Archivo de la pista, con Range |
 | PUT | `/songs/{id}/mixer` | Guardado automático del mezclador |
+| PATCH | `/songs/{id}` | Renombrar (solo el dueño) |
+| DELETE | `/songs/{id}` | Borrar canción, pistas, ajustes, silencios y archivos (solo el dueño; no mientras se procesa) |
+| GET | `/songs/{id}/tracks/{pista}/audio?download=1` | Descarga la pista como "Título - Pista.flac" |
+| GET | `/dashboard` | Panel con resumen |
+| GET/PUT | `/settings/preferences` | Preferencias del usuario |
+| PATCH | `/settings/preferences/sort` | Orden de la lista (desde la página Canciones) |
+
+## Tests
+
+- `php artisan test`: 63 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío y `withoutVite()`.
+- **Nunca** tocan la base `audio`, los archivos reales ni el audio-separator.
 
 ## Autenticación
 

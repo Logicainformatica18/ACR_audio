@@ -92,6 +92,23 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
    - **Arrastrar** sobre una onda para programar un silencio en esa pista. También puedes escribir los tiempos en "Silencios programados"; el botón *Ahora* pone el momento actual. La × de cada silencio lo quita.
    - Teclas **1** a **9** para silenciar cada pista e **Inicio** para volver al principio.
 7. **No hay botón de guardar**: todo se guarda solo. Arriba a la derecha verás "Guardando…" y luego "Guardado". La próxima vez que abras la canción estará igual que la dejaste.
+8. El botón **⬇** de cada pista la descarga en FLAC (por ejemplo `Mi canción - Voz.flac`).
+
+### Organizar tus canciones
+
+- **Buscar:** escribe en "Buscar canción…". No importan las tildes ni las mayúsculas.
+- **Ordenar:** más recientes, por título o por estado. Se recuerda.
+- **Renombrar o borrar:** botón **⋯** de cada canción. Borrar pide confirmación y elimina el archivo original, las pistas y los ajustes. No se puede borrar una canción mientras se está separando.
+
+### Preferencias
+
+En **tu nombre (abajo a la izquierda) → Configuración → Preferencias** puedes elegir:
+- el modelo de separación (solo aparecen los descargados)
+- el orden de la lista
+- el volumen general del mezclador
+- si quieres atajos de teclado
+
+En **Contraseña** puedes cambiar tu contraseña.
 
 > Si cambias el código del proyecto, cierra y vuelve a abrir `iniciar.bat` para que el worker use la versión nueva.
 

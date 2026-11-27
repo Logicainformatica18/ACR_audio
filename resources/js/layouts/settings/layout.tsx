@@ -18,6 +18,11 @@ const sidebarNavItems: NavItem[] = [
         icon: null,
     },
     {
+        title: 'Preferencias',
+        href: '/settings/preferences',
+        icon: null,
+    },
+    {
         title: 'Apariencia',
         href: '/settings/appearance',
         icon: null,

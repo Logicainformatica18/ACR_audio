@@ -26,6 +26,7 @@ class SongController extends Controller
 
         return Inertia::render('songs/index', [
             'songs' => SongResource::collection($this->userSongs($user))->resolve(),
+            'sort' => $user->preferences()->songs_sort,
             'limits' => [
                 'max_mb' => config('audio.max_upload_mb'),
                 'extensions' => config('audio.allowed_extensions'),
@@ -126,6 +127,42 @@ class SongController extends Controller
         SeparateSong::dispatch($song);
 
         return response()->json(['song' => SongResource::make($song)->resolve()]);
+    }
+
+    /** Renombrar: solo cambia el título visible (nunca afecta a rutas de archivo). */
+    public function update(Request $request, Song $song): JsonResponse
+    {
+        $this->authorize('update', $song);
+
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:200'],
+        ]);
+        $title = trim(preg_replace('/[\x00-\x1F\x7F]+/u', '', $data['title']) ?? '');
+
+        if ($title === '') {
+            return response()->json(['message' => 'El título no puede quedar vacío.', 'errors' => ['title' => ['El título no puede quedar vacío.']]], 422);
+        }
+
+        $song->update(['title' => $title]);
+
+        return response()->json(['song' => SongResource::make($song)->resolve()]);
+    }
+
+    /** Borra la canción, sus pistas, ajustes y silencios, y todos sus archivos. */
+    public function destroy(Song $song): JsonResponse
+    {
+        $this->authorize('delete', $song);
+
+        if ($song->status === Song::STATUS_PROCESSING) {
+            return response()->json(['message' => 'No se puede borrar mientras se está separando. Espera a que termine.'], 409);
+        }
+
+        $directory = $song->directory(); // {user_id}/{song_id}: solo ids
+        $song->delete(); // cascada en BD: tracks, track_settings, scheduled_silences
+        Storage::disk('audio')->deleteDirectory($directory);
+        Cache::forget(SeparateSong::progressKey($song->id));
+
+        return response()->json(['deleted' => true]);
     }
 
     /** @return \Illuminate\Database\Eloquent\Collection<int, Song> */

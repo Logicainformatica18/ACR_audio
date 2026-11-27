@@ -86,10 +86,37 @@
     - modo oscuro correcto
     - sin errores en la consola
 
+## Fase 5 — Búsqueda, renombrar, borrar y mejoras ✅
+
+- **Buscar** canciones (instantáneo, sin importar tildes) y **ordenar** (recientes, título o estado; se recuerda).
+- Menú **⋯** de cada canción: **Renombrar** (ventana con el título) y **Borrar** (pide confirmación; borra filas y archivos; bloqueado mientras se separa).
+- **Preferencias** (Configuración → Preferencias): modelo de separación, orden, atajos de teclado y volumen general.
+- **Descargar** cada pista desde el mezclador con un nombre legible.
+- **Panel** con resumen: canciones, listas, en cola, con error, minutos y espacio en disco.
+- Al borrar la cuenta se borran también sus archivos.
+- **Incidente corregido:** algunos tests borraban la carpeta real `audio/1` (ver `DECISIONES.md`, F5.10). Ahora ningún test puede tocar los audios reales, comprobado con un archivo testigo. La canción de prueba se restauró volviendo a separarla.
+- Verificado:
+  - **63 tests** pasan.
+  - Prueba completa en **Edge** con otra **copia** de `D:\Pistas`:
+    1. login
+    2. subida
+    3. "En cola" con aviso de `iniciar.bat`
+    4. worker → "Procesando" 0 → 21 → 85 → 100 % → "Lista" en 21 s sin recargar
+    5. búsqueda "corazon" → 1 resultado; "zzz" → mensaje vacío
+    6. renombrar
+    7. mezclador y descarga `Corazón (renombrada) - Voz.flac`
+    8. borrar: Cancelar la conserva; Borrar la elimina con su carpeta
+    9. preferencias guardadas
+    10. panel con datos correctos
+    11. mezclador en modo oscuro, sin errores en consola
+  - El trabajo de una canción borrada mientras estaba en cola se descartó sin error (`failed_jobs` = 0).
+
 ## Problemas conocidos / pendientes
 
 - **Avisos de onnxruntime en el log** (`Failed to load cublas64_13.dll`, "onnxruntime-gpu is built with CUDA 13.x"): vienen del entorno de audio-separator. No afectan, porque `htdemucs_6s` usa PyTorch con CUDA 12.8, que funciona. Solo importarían con modelos ONNX (MDX). No se toca porque está en la carpeta `separador`.
 - **Tras actualizar el código** hay que cerrar y volver a abrir `iniciar.bat`: el worker carga el código al arrancar.
+- **Solo hay un modelo disponible** (`htdemucs_6s.yaml`), porque es el único descargado en `SEPARATOR_MODELS_DIR`. Para usar otro (`htdemucs_ft.yaml`, `htdemucs.yaml`), descárgalo tú con audio-separator en esa carpeta; aparecerá solo en Preferencias. La app nunca descarga modelos por su cuenta.
+- **Servidor de desarrollo de Vite:** durante las pruebas había un `npm run dev` activo (lo indica `public/hot`). Para uso diario no hace falta: basta con `npm run build`. Si cierras ese servidor y la web se ve en blanco, borra el archivo `public/hot`.
 - **Memoria del mezclador:** Web Audio guarda las pistas decodificadas en la RAM del navegador. Son unos 90 MB por pista para una canción de 4–5 minutos, así que unos 550 MB para 6 pistas. Con canciones muy largas (más de 20 minutos) el navegador podría quedarse sin memoria. Pasaba igual con el `mezclador.html` original.
 
 - **No se pudo crear `D:\backups`.** La raíz `D:\` solo permite escribir a Administradores, y no se ejecutan comandos elevados. Siguen en su sitio:

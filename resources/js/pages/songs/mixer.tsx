@@ -8,7 +8,7 @@ import { useAutosave, type SaveStatus } from '@/lib/mixer/use-autosave';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem, type Song } from '@/types';
 import { Head, Link } from '@inertiajs/react';
-import { AlertCircle, ArrowLeft, Check, LoaderCircle, Pause, Play, SkipBack } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Download, LoaderCircle, Pause, Play, SkipBack } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface MixerTrack {
@@ -359,6 +359,14 @@ export default function Mixer({ song, tracks, preferences }: Props) {
                                             >
                                                 S
                                             </button>
+                                            <a
+                                                href={`${m.url}?download=1`}
+                                                className="grid h-[30px] w-8 place-items-center rounded-[5px] border"
+                                                aria-label={`Descargar pista ${m.label}`}
+                                                title={`Descargar ${m.label} (FLAC)`}
+                                            >
+                                                <Download className="size-4" />
+                                            </a>
                                         </div>
                                         <label className="col-span-2 flex items-center gap-2">
                                             <span className="sr-only">Volumen de {m.label}</span>

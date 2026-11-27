@@ -91,3 +91,18 @@ Registro de las decisiones tomadas en el proyecto y el motivo de cada una. Las m
 | F4.12 | Colores del mezclador como variables CSS `--mx-*` con variante oscura | Mismo aspecto que el HTML original, integrado con el tema claro u oscuro de la app |
 | F4.13 | Los tests llaman a `withoutVite()` | No dependen de haber compilado el frontend |
 | F4.14 | ESLint ignora `separador/`, `referencias/` y `storage/` | `npm run lint` (`eslint . --fix`) revisaba el JavaScript del entorno de Python dentro de `separador/.venv` |
+
+## Fase 5 — Gestión y mejoras
+
+| # | Decisión | Por qué |
+|---|---|---|
+| F5.1 | Búsqueda **en el navegador**, instantánea, por título, nombre del archivo y estado, sin distinguir tildes ni mayúsculas | Para una biblioteca personal es más rápida y simple que buscar en el servidor. "corazon" encuentra "Corazón" |
+| F5.2 | El orden de la lista se elige en la propia página y se guarda en las preferencias (`PATCH /settings/preferences/sort`) | El usuario no tiene que ir a Configuración para cambiarlo y se recuerda la próxima vez |
+| F5.3 | Renombrar solo cambia `songs.title` (sin caracteres de control y no vacío) | Los archivos tienen nombres fijos del servidor: renombrar nunca toca el disco |
+| F5.4 | Borrar pide confirmación (diálogo) y borra filas (cascada) **y** la carpeta `{usuario}/{canción}` | Pedido por el usuario. No quedan archivos huérfanos |
+| F5.5 | No se puede borrar una canción mientras se **está separando** (409). Sí mientras está en cola | Borrar en mitad del proceso dejaría a audio-separator escribiendo en una carpeta inexistente. Una en cola se descarta sola (`deleteWhenMissingModels`) |
+| F5.6 | Al borrar la **cuenta** se borra también `audio/{user_id}` (evento `User::deleting`) | La cascada de la BD no borra archivos |
+| F5.7 | Página **Preferencias**: modelo de separación (solo modelos descargados), orden de la lista, atajos de teclado y volumen general | Completa el requisito de "preferencias por usuario" con algo que se pueda cambiar desde la interfaz |
+| F5.8 | **Descargar pistas** desde el mezclador (`?download=1`) con nombre "Título - Pista.flac". El título se sanea para Windows y solo va en la cabecera `Content-Disposition` | Mejora útil: llevar una pista a otro programa. El texto del usuario nunca forma parte de una ruta |
+| F5.9 | **Panel** con totales por estado, minutos separados, espacio ocupado y últimas canciones | Que la página de inicio tras el login sea útil |
+| F5.10 | **Todos los tests usan un disco `audio` falso** (`Storage::fake` en `tests/TestCase.php`) y `phpunit.xml` apunta `AUDIO_STORAGE_PATH` a una carpeta de pruebas | **Incidente:** al añadir F5.6, tests que borran un usuario de prueba (id 1) borraron la carpeta **real** `audio/1`. Se perdieron los archivos derivados de la canción de prueba (no los originales de `D:\Pistas`). Se restauraron volviendo a separar la copia. Ahora hay dos barreras, comprobadas con un archivo testigo |
