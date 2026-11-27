@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Chord;
 use App\Models\Song;
+use App\Services\QueueWatchdog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,8 +18,9 @@ class ChordController extends Controller
     public function index(Song $song): JsonResponse
     {
         $this->authorize('view', $song);
+        QueueWatchdog::checkThrottled(5);
 
-        return response()->json(self::payload($song));
+        return response()->json(self::payload($song->fresh()));
     }
 
     /** Corrige un acorde: queda marcado como editado y se conserva al volver a analizar. */

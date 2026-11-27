@@ -9,6 +9,10 @@ rem  su propia ventana:
 rem    1) Separacion de pistas  (cola "separation", usa la GPU)
 rem    2) Acordes               (cola "acordes", en paralelo)
 rem  Uso interno: iniciar.bat separacion  /  iniciar.bat acordes
+rem
+rem  IMPORTANTE: "php" de Herd es un .bat (php.bat). Por eso se llama con
+rem  "call": sin call, al terminar php se cerraria la ventana entera en vez
+rem  de volver al bucle que reinicia el worker.
 rem ==================================================================
 
 if /i "%~1"=="separacion" goto separacion
@@ -51,7 +55,7 @@ if errorlevel 1 (
 )
 rem Si el worker se cierra por un error, se vuelve a arrancar a los 5 segundos.
 :bucle_separacion
-php artisan queue:work --queue=separation --sleep=2 --memory=512
+call php artisan queue:work --queue=separation --sleep=2 --memory=512
 echo.
 echo El trabajador se detuvo. Reiniciando en 5 segundos... (Ctrl+C para salir)
 timeout /t 5 /nobreak >nul
@@ -73,7 +77,7 @@ if not exist "tools\acordes\.venv\Scripts\python.exe" (
     echo.
 )
 :bucle_acordes
-php artisan queue:work --queue=acordes --sleep=1 --memory=512
+call php artisan queue:work --queue=acordes --sleep=1 --memory=512
 echo.
 echo El trabajador se detuvo. Reiniciando en 5 segundos... (Ctrl+C para salir)
 timeout /t 5 /nobreak >nul

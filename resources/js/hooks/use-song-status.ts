@@ -34,7 +34,7 @@ export function useSongStatus(songs: Song[]): LiveSong[] {
                 for (const s of data.songs) {
                     byId[s.id] = s;
                     const before = previous.current[s.id];
-                    if (before && before !== s.status && (s.status === 'ready' || s.status === 'failed')) finishedOne = true;
+                    if (before && before !== s.status && (s.status === 'ready' || s.status === 'failed' || s.status === 'canceled')) finishedOne = true;
                     previous.current[s.id] = s.status;
                 }
                 setLive(byId);

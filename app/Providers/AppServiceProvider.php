@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Services\QueueWatchdog;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -15,6 +17,16 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Cada worker, en cada vuelta (como mucho cada 10 s), revisa si algún
+        // trabajo se quedó con el worker muerto y lo libera (ver QueueWatchdog).
+        Queue::looping(function () {
+            try {
+                QueueWatchdog::checkThrottled(10);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
         // Correo de "recuperar contraseña" en español.
         ResetPassword::toMailUsing(function ($notifiable, string $token) {
             $url = url(route('password.reset', [

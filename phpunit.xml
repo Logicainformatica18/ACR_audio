@@ -26,6 +26,8 @@
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="MAIL_MAILER" value="array"/>
+        <!-- Los tests no escriben en storage/logs/laravel.log real -->
+        <env name="LOG_CHANNEL" value="null"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <!-- Segunda barrera: aunque un test no use Storage::fake, nunca apunta a los audios reales -->

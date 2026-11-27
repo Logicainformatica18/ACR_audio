@@ -12,10 +12,22 @@ interface Props {
     onConfirm: () => void;
     destructive?: boolean;
     processing?: boolean;
+    /** Texto del botón que cierra sin hacer nada (por defecto "Cancelar"). */
+    cancelLabel?: string;
 }
 
 /** Ventana de confirmación (por ejemplo, antes de borrar). */
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, onConfirm, destructive = false, processing = false }: Props) {
+export function ConfirmDialog({
+    open,
+    onOpenChange,
+    title,
+    description,
+    confirmLabel,
+    onConfirm,
+    destructive = false,
+    processing = false,
+    cancelLabel = 'Cancelar',
+}: Props) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
@@ -25,7 +37,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
                 </DialogHeader>
                 <DialogFooter className="gap-2">
                     <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={processing}>
-                        Cancelar
+                        {cancelLabel}
                     </Button>
                     <Button variant={destructive ? 'destructive' : 'default'} onClick={onConfirm} disabled={processing}>
                         {processing && <LoaderCircle className="animate-spin" />}

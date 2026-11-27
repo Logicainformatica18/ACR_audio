@@ -152,7 +152,73 @@
   - `iniciar.bat` probado en seco (una copia en la que el worker escribe en un archivo): abre las dos ventanas con su cola cada una.
   - `D:\Pistas` y la carpeta del separador **sin cambios**: 0 archivos modificados hoy.
 
+## Incidente 27/11/2026: canción atascada en "Procesando 39 %" ✅ resuelto
+
+**Qué pasó.** "Joe Satriani The Crush of Lov" (canción 12) se quedó en "Procesando" al 39 % durante minutos, no se podía borrar y bloqueaba a otra copia que estaba en cola (canción 13).
+
+**Diagnóstico:**
+- **Laravel y Windows:** el log de Laravel no tiene ningún error entre las 01:55 y las 02:02, y el registro de eventos de Windows tampoco (no hubo cierre inesperado de PHP ni de Python).
+- **El proceso de separación desapareció:**
+  - empezó a las 01:58:01 y su último avance (39 %) se guardó a las **01:58:09**;
+  - a las 02:01 no quedaba **ningún** proceso de audio-separator ni el worker que lo lanzó;
+  - la carpeta `work` estaba vacía, así que no siguió trabajando por su cuenta;
+  - las dos ventanas actuales de `iniciar.bat` se abrieron a las 01:59:27.
+- **Conclusión:** la ventana del worker de separación se cerró (o se interrumpió) con la canción a medias, y se llevó consigo a audio-separator. Que no haya rastro en ningún log solo encaja con eso.
+- **GPU y acordes:** con `nvidia-smi` la GPU estaba en reposo (7 %) y sin ningún proceso Python. El worker de acordes **no** competía por la GPU: no tenía trabajo (todas las canciones se habían analizado antes de las 01:45).
+- **La GPU sí se usa desde la cola:** con el worker real de `iniciar.bat`, la canción 13 se separó en unos 20 s con la GPU al 87–88 % y `python.exe` en la lista de procesos de `nvidia-smi`.
+
+**Por qué no se recuperó sola** (tres fallos de la app):
+1. La canción quedó en `processing` para siempre: nada detectaba que el worker había muerto.
+2. El job siguió **reservado** en la tabla `jobs`. Con `retry_after` de 65 min, no se habría reintentado hasta entonces.
+3. El bloqueo de la GPU (`WithoutOverlapping`) quedó tomado **65 min**, así que la copia en cola se reintentaba cada 15 s sin poder empezar. Además, borrar estaba prohibido mientras "procesaba".
+
+Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reiniciaba al worker.**
+- `php` en Herd es `php.bat`, y un `.bat` que llama a otro sin `call` no vuelve.
+- Por eso, en cuanto un worker terminaba (por un error, por memoria o por `queue:restart`), **se cerraba la ventana entera**.
+
+**Caso actual:** no había proceso que terminar.
+- La canción 12 se marcó como Error con un mensaje claro.
+- Se quitaron su job y el bloqueo, y se borraron sus archivos a medias.
+- La cola siguió sola con la canción 13, que se separó bien.
+
+**Solución, para que no vuelva a pasar:**
+- **Latido y vigilante** (`QueueWatchdog`):
+  - mientras separa (o analiza acordes), el job escribe `heartbeat_at` cada 2 s;
+  - si deja de hacerlo durante 30 s, el vigilante termina el proceso si sigue vivo (solo si su línea de comandos contiene la carpeta de esa canción), marca el error, borra los archivos a medias, **libera el bloqueo** y **quita el job de la cola**;
+  - lo revisan los workers en cada vuelta (como mucho cada 10 s) y las consultas de estado de la página.
+- **Proceso colgado:** el job ya no espera a ciegas. Si audio-separator pasa 180 s sin escribir nada (`SEPARATOR_STALL_TIMEOUT`), lo detiene y marca "se colgó en N %". Los acordes usan 120 s (`CHORDS_STALL_TIMEOUT`).
+- **Botón Cancelar** (con confirmación) para canciones en cola o procesando:
+  - detiene el proceso **real** (árbol completo con `taskkill /T`) en menos de 1 s y borra la carpeta `work`, reintentando mientras Windows suelta los archivos;
+  - conserva el original;
+  - si el worker no responde en 8 s, la propia petición hace la limpieza;
+  - nuevo estado **Cancelada**.
+- **Reintentar** para canciones con error **o canceladas**. **Borrar** (con confirmación) para cualquier canción que no se esté separando; si se está separando, pide cancelarla primero.
+- **GPU sin pisarse:** si hay una separación en marcha, los acordes se analizan con el **procesador** (5 s en vez de 3 s para 5 minutos) en lugar de esperar o compartir la GPU. El dispositivo usado queda en `chords_model`, por ejemplo "btc-large (CPU)".
+- **Duplicados:** al subir un archivo con el mismo nombre y tamaño que otra canción tuya, la subida se para y pregunta: "Ya tienes «…». ¿La subes de todos modos?" con *Omitir* o *Subir de todos modos*. Las demás siguen subiéndose.
+- **`iniciar.bat`:** usa `call php …`. Ahora, si un worker termina, la ventana lo reinicia en 5 s en vez de cerrarse.
+
+**Verificado:**
+- **89 tests** (10 nuevos). Entre ellos:
+  - un proceso colgado real se detiene en 2,6 s;
+  - el vigilante mata el proceso de la canción, pero no otro programa;
+  - se quita el job correcto de la cola;
+  - los acordes usan la CPU durante una separación.
+- **En Edge, con los workers reales de `iniciar.bat`**, usando una copia de *lotus feet* de `D:\Pistas`:
+  1. Subir y, al 29 %, **Cancelar**: en 1,4 s queda "Cancelada", **sin ningún proceso vivo** (antes había `cmd`, `audio-separator.exe` y 2 `python.exe`), la carpeta `work` borrada y el original conservado.
+  2. **Reintentar**: "Lista" en 35 s, y los acordes analizados.
+  3. Subir el mismo archivo: aparece el aviso de duplicado; *Omitir* no crea otra canción.
+  4. **Borrar** con confirmación: desaparece con su carpeta.
+- **Repetición del incidente:**
+  1. Con una canción procesando al 27 % y otra en cola, se mató a la fuerza el worker de separación.
+  2. A los **37 s** el vigilante marcó la primera como Error ("¿se cerró la ventana «1 SEPARACION»?").
+  3. La segunda empezó sola y terminó.
+  4. Quedaron 0 jobs y 0 bloqueos, la carpeta `work` borrada, y la ventana volvió a arrancar su worker.
+- Las canciones de prueba se borraron después. La canción 12 queda como Error para que puedas reintentarla o borrarla, y la 13 está lista.
+
 ## Problemas conocidos / pendientes
+
+- **No cierres las ventanas de `iniciar.bat` mientras se separa una canción.** Si se cierran, ahora la canción pasa sola a Error en unos 30–40 s y la cola sigue, pero esa separación se pierde y hay que reintentarla.
+- Al subir un duplicado, la consola del navegador muestra "409 (Conflict)": es la respuesta esperada del aviso, no un error.
 
 - **Acordes que aparecen "progresivamente": en la práctica, casi de golpe.** El motor sí los entrega por bloques y Laravel los guarda uno a uno. Pero el análisis en la GPU dura unos 3 s, después de 3–4 s de arranque de Python, y la página consulta cada 2 s. Por eso se ven 1 o 2 estados intermedios ("Analizando… 8 %" y luego casi todos los acordes) y no un goteo lento.
 - **Power chords (sin tercera)**, típicos del rock y el metal: el modelo duda entre mayor y menor (B o Bm). En el tema de metal en Si menor, el 84 % del tiempo quedó en acordes de la tonalidad. Se puede corregir a mano.

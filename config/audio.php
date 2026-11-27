@@ -26,6 +26,8 @@ return [
         'output_format' => env('SEPARATOR_OUTPUT_FORMAT', 'FLAC'),
         // Segundos máximos por canción antes de cancelar el proceso.
         'timeout' => (int) env('SEPARATOR_TIMEOUT', 3600),
+        // Segundos sin ninguna salida nueva del proceso para darlo por colgado.
+        'stall_timeout' => (int) env('SEPARATOR_STALL_TIMEOUT', 180),
     ],
 
     // Motor de acordes (tools/acordes, con su propio .venv). Las rutas vacías
@@ -37,6 +39,7 @@ return [
         // btc-large (vocabulario grande: 7, maj7, m7, dim, sus...) o btc-majmin
         'model' => env('CHORDS_MODEL', 'btc-large'),
         'timeout' => (int) env('CHORDS_TIMEOUT', 900),
+        'stall_timeout' => (int) env('CHORDS_STALL_TIMEOUT', 120),
         // Pistas que se mezclan para analizar (sin batería ni voz).
         'stems' => ['guitar', 'bass', 'piano', 'other'],
         // Archivo de pesos de cada modelo (para comprobar que está descargado).

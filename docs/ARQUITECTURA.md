@@ -65,6 +65,23 @@ Al borrar un usuario se borran en cascada sus canciones, pistas, ajustes y silen
 | `processing` | Procesando | audio-separator está trabajando |
 | `ready` | Lista | Pistas disponibles en el mezclador |
 | `failed` | Error | Ver `error` (resumen) y `log` (salida completa) |
+| `canceled` | Cancelada | El usuario la canceló; se puede reintentar o borrar |
+
+Mientras separa, el job guarda `process_pid` (el proceso de audio-separator) y actualiza `heartbeat_at` cada 2 s. Los acordes usan `chords_pid` y `chords_heartbeat_at`.
+
+### Vigilante (`QueueWatchdog`)
+
+```
+Queue::looping (cada worker, como mucho cada 10 s)  ─┐
+GET /songs, /songs/status, /songs/{id}/chords       ─┴─► QueueWatchdog::check()
+  canciones "processing" sin latido desde hace 30 s (o acordes "processing" igual):
+    1. taskkill /F /T del PID, SOLO si su línea de comandos contiene {usuario}\{canción}\
+    2. status = failed + mensaje claro; borra work/ (reintentando unos segundos)
+    3. libera el bloqueo WithoutOverlapping (audio-separator / chord-engine)
+    4. quita de la tabla jobs el trabajo de esa canción
+```
+
+Dentro del job, un bucle cada 0,25 s lee la salida, escribe el latido, mira si la canción se canceló (detiene el proceso y limpia) y si lleva `SEPARATOR_STALL_TIMEOUT` s (180) sin salida nueva (colgado: lo detiene y marca Error).
 
 ## Almacenamiento de archivos
 
@@ -217,7 +234,8 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | POST | `/songs` | Sube un archivo (JSON) y lo encola |
 | GET | `/songs/status` | Estado en vivo de las canciones del usuario |
 | GET | `/songs/{id}/log` | Log de audio-separator (solo el dueño) |
-| POST | `/songs/{id}/retry` | Vuelve a encolar una canción con error (solo el dueño) |
+| POST | `/songs/{id}/retry` | Vuelve a encolar una canción con error o cancelada (solo el dueño) |
+| POST | `/songs/{id}/cancel` | Cancela una canción en cola o separándose: detiene el proceso real y borra lo hecho (solo el dueño) |
 | GET | `/songs/{id}` | Mezclador (solo el dueño y solo si está lista) |
 | GET | `/songs/{id}/tracks/{pista}/audio` | Archivo de la pista, con Range |
 | PUT | `/songs/{id}/mixer` | Guardado automático del mezclador |
@@ -233,7 +251,7 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 
 ## Tests
 
-- `php artisan test`: 79 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
+- `php artisan test`: 89 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
 - El job de acordes se prueba con un **motor falso en PHP** (`tests/Fixtures/fake_chords_*.php`) que imprime los mismos eventos JSON.
 - **Nunca** tocan la base `audio`, los archivos reales, el audio-separator ni el motor de acordes real.
 
@@ -255,6 +273,8 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | `SEPARATOR_MODEL` | Modelo por defecto (`htdemucs_6s.yaml`) |
 | `SEPARATOR_OUTPUT_FORMAT` | Formato de las pistas (`FLAC`) |
 | `SEPARATOR_TIMEOUT` | Segundos máximos por canción (3600) |
+| `SEPARATOR_STALL_TIMEOUT` | Segundos sin salida nueva para dar la separación por colgada (180) |
+| `CHORDS_STALL_TIMEOUT` | Lo mismo para el análisis de acordes (120) |
 | `CHORDS_PYTHON` | Python del motor de acordes. Vacío = `tools/acordes/.venv/Scripts/python.exe` |
 | `CHORDS_SCRIPT` | Script del motor. Vacío = `tools/acordes/acordes.py` |
 | `CHORDS_MODELS_DIR` | Carpeta de los pesos. Vacío = `tools/acordes/modelos` |

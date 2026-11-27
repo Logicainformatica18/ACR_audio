@@ -84,18 +84,24 @@ class AnalyzeChords implements ShouldQueue
         $edited = $song->chords()->where('edited', true)->get()
             ->map(fn (Chord $c) => [$c->start_seconds, $c->end_seconds])->all();
 
+        // Si hay una separación en marcha, los acordes van por el PROCESADOR para
+        // no quitarle GPU (en CPU tardan ~5 s en vez de ~3 s para 5 minutos).
+        $useCpu = Song::where('status', Song::STATUS_PROCESSING)->exists();
+
         $song->update([
             'chords_status' => Song::STATUS_PROCESSING,
             'chords_progress' => 0,
-            'chords_model' => $engine->model(),
+            'chords_model' => $engine->model().($useCpu ? ' (CPU)' : ' (GPU)'),
             'chords_key' => null,
             'chords_error' => null,
             'chords_started_at' => now(),
             'chords_finished_at' => null,
+            'chords_heartbeat_at' => now(),
         ]);
 
         $timeout = (int) config('audio.chords.timeout');
-        $process = $engine->process($files, $timeout);
+        $stallAfter = (int) config('audio.chords.stall_timeout', 120);
+        $process = $engine->process($files, $timeout, $useCpu);
 
         $state = [
             'buffer' => '',      // trozo de línea aún incompleto
@@ -108,30 +114,58 @@ class AnalyzeChords implements ShouldQueue
             'gone' => false,     // la canción se borró durante el análisis
         ];
 
+        // Se vigila el proceso: cada línea se guarda al llegar, hay latido para el
+        // vigilante y se detiene si se cuelga (sin salida nueva).
         try {
-            $process->run(function (string $type, string $data) use (&$state, $song, $edited, $process) {
-                if ($type === Process::ERR) {
-                    $state['stderr'] = substr($state['stderr'].$data, -8000);
+            $process->start();
+            Song::whereKey($song->id)->update(['chords_pid' => $process->getPid()]);
+            $lastActivity = microtime(true);
+            $lastBeat = microtime(true);
+
+            while (true) {
+                $running = $process->isRunning();
+                $state['stderr'] = substr($state['stderr'].$process->getIncrementalErrorOutput(), -8000);
+                $out = $process->getIncrementalOutput();
+                $now = microtime(true);
+                if ($out !== '') {
+                    $lastActivity = $now;
+                    $state['buffer'] .= $out;
+                    while (($pos = strpos($state['buffer'], "\n")) !== false) {
+                        $line = trim(substr($state['buffer'], 0, $pos));
+                        $state['buffer'] = substr($state['buffer'], $pos + 1);
+                        if ($line !== '' && ! $this->handleLine($line, $song, $edited, $state)) {
+                            $state['gone'] = true;
+                            $process->stop(2);
+                            break 2;
+                        }
+                    }
+                }
+                if (! $running) {
+                    break;
+                }
+                if ($now - $lastBeat >= 2) {
+                    $lastBeat = $now;
+                    if (Song::whereKey($song->id)->update(['chords_heartbeat_at' => now()]) === 0) {
+                        $state['gone'] = true; // la canción se borró
+                        $process->stop(2);
+                        break;
+                    }
+                }
+                if ($now - $lastActivity > $stallAfter) {
+                    $process->stop(2);
+                    $this->markFailed($song, "El análisis de acordes se colgó: no avanzó en {$stallAfter} s. Pulsa «Volver a analizar».");
 
                     return;
                 }
-                $state['buffer'] .= $data;
-                while (($pos = strpos($state['buffer'], "\n")) !== false) {
-                    $line = trim(substr($state['buffer'], 0, $pos));
-                    $state['buffer'] = substr($state['buffer'], $pos + 1);
-                    if ($line !== '' && ! $this->handleLine($line, $song, $edited, $state)) {
-                        $state['gone'] = true;
-                        $process->stop(2);
-
-                        return;
-                    }
-                }
-            });
+                $process->checkTimeout();
+                usleep(150_000);
+            }
         } catch (ProcessTimedOutException) {
             $this->markFailed($song, 'El análisis de acordes superó el tiempo máximo ('.round($timeout / 60).' min). Puedes subir CHORDS_TIMEOUT en el .env.');
 
             return;
         }
+        Song::whereKey($song->id)->update(['chords_pid' => null, 'chords_heartbeat_at' => null]);
 
         if ($state['gone']) {
             return;
@@ -244,6 +278,8 @@ class AnalyzeChords implements ShouldQueue
             'chords_status' => Song::STATUS_FAILED,
             'chords_error' => Str::limit($error, 490),
             'chords_finished_at' => now(),
+            'chords_pid' => null,
+            'chords_heartbeat_at' => null,
         ]);
     }
 

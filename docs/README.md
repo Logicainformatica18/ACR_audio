@@ -93,9 +93,11 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 ## 4. Cómo usarla
 
 1. Ve a **Canciones** en el menú.
-2. **Arrastra** una o varias canciones (MP3, WAV, FLAC, M4A u OGG, hasta 250 MB cada una) a la zona punteada, o haz clic en ella para elegirlas. Cada archivo muestra su barra de subida.
+2. **Arrastra** una o varias canciones (MP3, WAV, FLAC, M4A u OGG, hasta 250 MB cada una) a la zona punteada, o haz clic en ella para elegirlas. Cada archivo muestra su barra de subida. Si ya tienes una canción con el mismo nombre y tamaño, te pregunta antes de subirla otra vez (*Omitir* o *Subir de todos modos*).
 3. Cada canción pasa por **En cola → Procesando (con %) → Lista**. Una canción de 4 minutos tarda unos 25 segundos con la RTX 5060 Ti.
 4. Si aparece **Error**, pulsa **Ver log** para ver el motivo o **Reintentar** para volver a intentarlo.
+   - Mientras una canción está **En cola** o **Procesando** puedes pulsar **Cancelar**: se detiene la separación de verdad y se borra lo que llevaba hecho. Queda como **Cancelada**, y luego puedes **Reintentar** o borrarla.
+   - Si una separación se cuelga (más de 3 minutos sin avanzar) o se cierra la ventana de `iniciar.bat` a mitad, la canción pasa sola a **Error** en menos de un minuto y la cola sigue con la siguiente.
 5. Si una canción se queda mucho rato "En cola", comprueba que la ventana de `iniciar.bat` está abierta.
 6. Cuando esté **Lista**, pulsa **Abrir mezclador**. Las pistas se cargan solas y luego puedes:
    - **▶** reproducir o pausar (o la barra espaciadora), y **⏮** volver al inicio.
@@ -125,7 +127,7 @@ Los acordes quedan guardados: la próxima vez que abras la canción salen de la 
 
 - **Buscar:** escribe en "Buscar canción…". No importan las tildes ni las mayúsculas.
 - **Ordenar:** más recientes, por título o por estado. Se recuerda.
-- **Renombrar o borrar:** botón **⋯** de cada canción. Borrar pide confirmación y elimina el archivo original, las pistas y los ajustes. No se puede borrar una canción mientras se está separando.
+- **Renombrar o borrar:** botón **⋯** de cada canción. Borrar pide confirmación y elimina el archivo original, las pistas y los ajustes. No se puede borrar una canción mientras se está separando: cancélala primero.
 
 ### Preferencias
 

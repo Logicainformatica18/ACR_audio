@@ -3,10 +3,10 @@ import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { type Song, type UploadLimits } from '@/types';
 import axios, { AxiosError } from 'axios';
-import { CheckCircle2, LoaderCircle, Upload, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, LoaderCircle, Upload, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type UploadState = 'waiting' | 'uploading' | 'done' | 'error';
+type UploadState = 'waiting' | 'uploading' | 'done' | 'error' | 'duplicate' | 'skipped';
 
 interface UploadItem {
     key: number;
@@ -14,6 +14,8 @@ interface UploadItem {
     state: UploadState;
     progress: number; // 0 a 100
     error?: string;
+    /** El usuario confirmó que quiere subirla aunque ya exista una igual. */
+    allowDuplicate?: boolean;
 }
 
 interface Props {
@@ -44,8 +46,7 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
     const accept = limits.extensions.map((e) => '.' + e).join(',');
     const maxBytes = limits.max_mb * 1024 * 1024;
 
-    const update = (key: number, patch: Partial<UploadItem>) =>
-        setItems((list) => list.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+    const update = (key: number, patch: Partial<UploadItem>) => setItems((list) => list.map((it) => (it.key === key ? { ...it, ...patch } : it)));
 
     /** Revisa extensión y tamaño en el navegador antes de subir (el servidor vuelve a validar). */
     const addFiles = useCallback(
@@ -74,6 +75,7 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
 
         const form = new FormData();
         form.append('file', next.file);
+        if (next.allowDuplicate) form.append('allow_duplicate', '1');
 
         axios
             .post<{ song: Song }>(route('songs.store'), form, {
@@ -86,7 +88,12 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
                 update(next.key, { state: 'done', progress: 100 });
                 onUploaded(res.data.song);
             })
-            .catch((err) => update(next.key, { state: 'error', error: uploadErrorMessage(err) }))
+            .catch((err) => {
+                const res = (err as AxiosError<{ code?: string; message?: string }>).response;
+                // Ya existe una canción con el mismo nombre y tamaño: se pregunta (y se sigue con las demás).
+                if (res?.status === 409 && res.data?.code === 'duplicate') update(next.key, { state: 'duplicate', error: res.data.message });
+                else update(next.key, { state: 'error', error: uploadErrorMessage(err) });
+            })
             .finally(() => {
                 busy.current = false;
                 setItems((list) => [...list]); // vuelve a ejecutar el efecto para el siguiente
@@ -107,7 +114,7 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
     }, []);
 
     const pending = items.filter((it) => it.state === 'waiting' || it.state === 'uploading').length;
-    const finished = items.filter((it) => it.state === 'done' || it.state === 'error').length;
+    const finished = items.filter((it) => it.state === 'done' || it.state === 'error' || it.state === 'skipped').length;
 
     return (
         <section aria-label="Subir canciones" className="space-y-3">
@@ -167,7 +174,11 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
                             {pending > 0 ? `Subiendo… quedan ${pending}` : 'Subidas terminadas'}
                         </span>
                         {finished > 0 && (
-                            <Button variant="ghost" size="sm" onClick={() => setItems((l) => l.filter((it) => it.state === 'waiting' || it.state === 'uploading'))}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setItems((l) => l.filter((it) => it.state === 'waiting' || it.state === 'uploading'))}
+                            >
                                 Limpiar lista
                             </Button>
                         )}
@@ -179,11 +190,20 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
                                     {it.state === 'uploading' && <LoaderCircle className="size-4 shrink-0 animate-spin" aria-hidden />}
                                     {it.state === 'done' && <CheckCircle2 className="size-4 shrink-0 text-emerald-600" aria-hidden />}
                                     {it.state === 'error' && <XCircle className="size-4 shrink-0 text-red-600" aria-hidden />}
+                                    {(it.state === 'duplicate' || it.state === 'skipped') && (
+                                        <Copy className="size-4 shrink-0 text-amber-600" aria-hidden />
+                                    )}
                                     <span className="min-w-0 flex-1 truncate" title={it.file.name}>
                                         {it.file.name}
                                     </span>
                                     <span className="text-muted-foreground shrink-0 tabular-nums">
-                                        {it.state === 'uploading' ? `${it.progress}%` : it.state === 'waiting' ? 'En espera' : formatBytes(it.file.size)}
+                                        {it.state === 'uploading'
+                                            ? `${it.progress}%`
+                                            : it.state === 'waiting'
+                                              ? 'En espera'
+                                              : it.state === 'skipped'
+                                                ? 'Omitida'
+                                                : formatBytes(it.file.size)}
                                     </span>
                                 </div>
                                 {(it.state === 'uploading' || it.state === 'waiting') && (
@@ -199,6 +219,22 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
                                     </div>
                                 )}
                                 {it.state === 'error' && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{it.error}</p>}
+                                {it.state === 'duplicate' && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-2" role="alert">
+                                        <p className="flex-1 basis-60 text-sm text-amber-800 dark:text-amber-300">
+                                            {it.error} ¿La subes de todos modos?
+                                        </p>
+                                        <Button size="sm" variant="outline" onClick={() => update(it.key, { state: 'skipped', error: undefined })}>
+                                            Omitir
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => update(it.key, { state: 'waiting', allowDuplicate: true, error: undefined })}
+                                        >
+                                            Subir de todos modos
+                                        </Button>
+                                    </div>
+                                )}
                             </li>
                         ))}
                     </ul>

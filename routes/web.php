@@ -17,6 +17,7 @@ Route::middleware('auth')->group(function () {
     Route::get('songs/status', [SongController::class, 'status'])->name('songs.status');
     Route::get('songs/{song}/log', [SongController::class, 'log'])->whereNumber('song')->name('songs.log');
     Route::post('songs/{song}/retry', [SongController::class, 'retry'])->whereNumber('song')->name('songs.retry');
+    Route::post('songs/{song}/cancel', [SongController::class, 'cancel'])->whereNumber('song')->name('songs.cancel');
 
     Route::patch('songs/{song}', [SongController::class, 'update'])->whereNumber('song')->name('songs.update');
     Route::delete('songs/{song}', [SongController::class, 'destroy'])->whereNumber('song')->name('songs.destroy');

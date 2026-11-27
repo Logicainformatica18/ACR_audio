@@ -102,7 +102,7 @@ class ChordEngine
      *
      * @param  array<int, string>  $files
      */
-    public function process(array $files, int $timeout): Process
+    public function process(array $files, int $timeout, bool $cpu = false): Process
     {
         return new Process([
             $this->python(),
@@ -110,6 +110,7 @@ class ChordEngine
             ...$files,
             '--modelo', $this->model(),
             '--modelos-dir', $this->modelsDir(),
+            ...($cpu ? ['--cpu'] : []),
         ], dirname($this->script()), [
             'PYTHONUNBUFFERED' => '1',
             'PYTHONIOENCODING' => 'utf-8',

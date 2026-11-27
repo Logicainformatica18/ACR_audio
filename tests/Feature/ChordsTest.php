@@ -112,7 +112,7 @@ class ChordsTest extends TestCase
         $this->assertSame(Song::STATUS_READY, $song->chords_status);
         $this->assertSame(100, $song->chords_progress);
         $this->assertSame('A menor', $song->chords_key);
-        $this->assertSame('btc-large', $song->chords_model);
+        $this->assertSame('btc-large (GPU)', $song->chords_model);
         $this->assertNotNull($song->chords_finished_at);
         $this->assertSame(['N', 'Am', 'F', 'G7'], $song->chords()->pluck('chord')->all());
         $am = $song->chords()->where('chord', 'Am')->first();

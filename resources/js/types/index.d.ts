@@ -32,7 +32,7 @@ export interface SharedData {
     [key: string]: unknown;
 }
 
-export type SongStatus = 'pending' | 'processing' | 'ready' | 'failed';
+export type SongStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'canceled';
 
 export interface Song {
     id: number;

@@ -1,9 +1,11 @@
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { elapsedSeconds, formatDuration } from '@/lib/format';
 import { type LiveSong } from '@/types';
-import axios from 'axios';
-import { FileText, RotateCcw } from 'lucide-react';
+import axios, { AxiosError } from 'axios';
+import { Ban, FileText, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 /** Segundos en cola sin que nada se procese para sospechar que el worker está cerrado. */
 const WORKER_HINT_AFTER = 20;
@@ -11,10 +13,54 @@ const WORKER_HINT_AFTER = 20;
 interface Props {
     song: LiveSong;
     anyProcessing: boolean;
+    /** Se llama tras reintentar o cancelar, para recargar la lista. */
     onRetried: () => void;
 }
 
-/** Información extra bajo cada canción según su estado: progreso, cola o error. */
+/** Botón "Cancelar" (con confirmación): detiene la separación real y borra lo que llevaba hecho. */
+function CancelButton({ song, onDone }: { song: LiveSong; onDone: () => void }) {
+    const [open, setOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    const cancel = async () => {
+        setBusy(true);
+        try {
+            await axios.post(route('songs.cancel', song.id), {}, { headers: { Accept: 'application/json' } });
+            toast.success(`Se canceló «${song.title}».`);
+            setOpen(false);
+            onDone();
+        } catch (err) {
+            toast.error((err as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo cancelar.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <>
+            <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+                <Ban /> Cancelar
+            </Button>
+            <ConfirmDialog
+                open={open}
+                onOpenChange={setOpen}
+                title="¿Cancelar esta canción?"
+                description={
+                    song.status === 'processing'
+                        ? `Se detendrá la separación de «${song.title}» y se borrará lo que llevaba hecho. El archivo original se conserva: podrás reintentar o borrarla.`
+                        : `«${song.title}» saldrá de la cola. El archivo original se conserva: podrás reintentar o borrarla.`
+                }
+                confirmLabel="Cancelar canción"
+                cancelLabel="Seguir"
+                destructive
+                processing={busy}
+                onConfirm={cancel}
+            />
+        </>
+    );
+}
+
+/** Información extra bajo cada canción según su estado: progreso, cola, error o cancelada. */
 export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
     const [log, setLog] = useState<string | null>(null);
     const [loadingLog, setLoadingLog] = useState(false);
@@ -34,10 +80,13 @@ export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
                 >
                     <div className="h-full bg-sky-500 transition-[width] duration-500" style={{ width: `${Math.max(3, pct)}%` }} />
                 </div>
-                <p className="text-muted-foreground text-xs">
-                    Separando con la GPU… {song.progress != null ? `${pct}% · ` : ''}
-                    {formatDuration(elapsedSeconds(song.started_at))} transcurridos
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-muted-foreground text-xs">
+                        Separando con la GPU… {song.progress != null ? `${pct}% · ` : ''}
+                        {formatDuration(elapsedSeconds(song.started_at))} transcurridos
+                    </p>
+                    <CancelButton song={song} onDone={onRetried} />
+                </div>
             </div>
         );
     }
@@ -45,18 +94,21 @@ export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
     if (song.status === 'pending') {
         const waited = elapsedSeconds(song.queued_at ?? song.created_at) ?? 0;
         return (
-            <p className="text-muted-foreground mt-1 text-xs">
-                {song.queue_position ? `Posición en la cola: ${song.queue_position}. ` : ''}
-                {!anyProcessing && waited > WORKER_HINT_AFTER && (
-                    <span className="text-amber-700 dark:text-amber-400">
-                        Lleva {formatDuration(waited)} esperando. ¿Está abierta la ventana de <strong>iniciar.bat</strong>?
-                    </span>
-                )}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-muted-foreground text-xs">
+                    {song.queue_position ? `Posición en la cola: ${song.queue_position}. ` : ''}
+                    {!anyProcessing && waited > WORKER_HINT_AFTER && (
+                        <span className="text-amber-700 dark:text-amber-400">
+                            Lleva {formatDuration(waited)} esperando. ¿Está abierta la ventana de <strong>iniciar.bat</strong>?
+                        </span>
+                    )}
+                </p>
+                <CancelButton song={song} onDone={onRetried} />
+            </div>
         );
     }
 
-    if (song.status === 'failed') {
+    if (song.status === 'failed' || song.status === 'canceled') {
         const toggleLog = async () => {
             if (log !== null) return setLog(null);
             setLoadingLog(true);
@@ -72,6 +124,8 @@ export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
             try {
                 await axios.post(route('songs.retry', song.id));
                 onRetried();
+            } catch (err) {
+                toast.error((err as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo reintentar.');
             } finally {
                 setRetrying(false);
             }
@@ -79,11 +133,17 @@ export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
 
         return (
             <div className="mt-2 space-y-2">
-                {song.error && <p className="text-sm break-words text-red-700 dark:text-red-400">{song.error}</p>}
+                {song.error && (
+                    <p className={song.status === 'failed' ? 'text-sm break-words text-red-700 dark:text-red-400' : 'text-muted-foreground text-sm'}>
+                        {song.error}
+                    </p>
+                )}
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={toggleLog} disabled={loadingLog} aria-expanded={log !== null}>
-                        <FileText /> {log !== null ? 'Ocultar log' : 'Ver log'}
-                    </Button>
+                    {song.status === 'failed' && (
+                        <Button variant="outline" size="sm" onClick={toggleLog} disabled={loadingLog} aria-expanded={log !== null}>
+                            <FileText /> {log !== null ? 'Ocultar log' : 'Ver log'}
+                        </Button>
+                    )}
                     <Button variant="outline" size="sm" onClick={retry} disabled={retrying}>
                         <RotateCcw /> Reintentar
                     </Button>

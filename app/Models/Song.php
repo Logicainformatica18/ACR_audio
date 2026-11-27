@@ -31,11 +31,15 @@ class Song extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    /** Cancelada por el usuario (en cola o a mitad de la separación). */
+    public const STATUS_CANCELED = 'canceled';
+
     public const STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_PROCESSING,
         self::STATUS_READY,
         self::STATUS_FAILED,
+        self::STATUS_CANCELED,
     ];
 
     protected $fillable = [
@@ -58,6 +62,10 @@ class Song extends Model
         'chords_error',
         'chords_started_at',
         'chords_finished_at',
+        'process_pid',
+        'heartbeat_at',
+        'chords_pid',
+        'chords_heartbeat_at',
     ];
 
     /** El log puede ser largo: solo se envía cuando se pide expresamente. */
@@ -74,6 +82,10 @@ class Song extends Model
             'chords_progress' => 'integer',
             'chords_started_at' => 'datetime',
             'chords_finished_at' => 'datetime',
+            'process_pid' => 'integer',
+            'heartbeat_at' => 'datetime',
+            'chords_pid' => 'integer',
+            'chords_heartbeat_at' => 'datetime',
         ];
     }
 
@@ -151,6 +163,12 @@ class Song extends Model
 
     public function isFinished(): bool
     {
-        return in_array($this->status, [self::STATUS_READY, self::STATUS_FAILED], true);
+        return in_array($this->status, [self::STATUS_READY, self::STATUS_FAILED, self::STATUS_CANCELED], true);
+    }
+
+    /** ¿Se puede cancelar? (en cola o separándose) */
+    public function isCancelable(): bool
+    {
+        return in_array($this->status, [self::STATUS_PENDING, self::STATUS_PROCESSING], true);
     }
 }
