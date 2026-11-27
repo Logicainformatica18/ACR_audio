@@ -82,12 +82,49 @@ Límites que debe cumplir un archivo, de menor a mayor:
 | `post_max_size` | 260M | `php.ini` de Herd |
 | `client_max_body_size` | 260M | `herd.conf` de nginx (Herd) |
 
+## Cola de separación
+
+```
+POST /songs ──► SeparateSong::dispatch($song)  ──► tabla jobs (cola "separation")
+                                                       │
+iniciar.bat ─► php artisan queue:work --queue=separation (1 worker = 1 canción a la vez)
+                                                       │
+SeparateSong::handle()
+  1. comprueba exe, carpeta de modelos y que el modelo esté descargado (si no, Error)
+  2. status = processing, started_at
+  3. Symfony Process (sin shell, timeout SEPARATOR_TIMEOUT):
+       audio-separator.exe {base}\{u}\{s}\original.ext -m htdemucs_6s.yaml
+         --model_file_dir … --output_dir {base}\{u}\{s}\work --output_format FLAC
+         --custom_output_names {"Vocals":"vocals",…}
+     · cada 1,5 s: % de la barra de progreso → caché "song-progress:{id}"
+  4. éxito: mueve work/*.flac → stems/{stem}.flac, crea filas en tracks,
+            duración con ffprobe, status = ready, guarda log
+     error: status = failed, error = línea más útil del log, log completo
+  5. borra work/
+```
+
+- `WithoutOverlapping('audio-separator')` impide dos separaciones simultáneas aunque haya dos workers.
+- `retry_after` de la cola database = `SEPARATOR_TIMEOUT` + 300 s.
+- Si el job lanza una excepción inesperada, `failed()` marca la canción como Error.
+
+### Estado en vivo (polling)
+
+La página Canciones llama a `GET /songs/status` cada 2,5 s **solo** mientras alguna canción está en cola o procesando. La respuesta incluye, por canción:
+- `status`
+- `progress`: % mientras se procesa
+- `queue_position`: puesto en la cola, contando la que se está procesando
+
+Cuando una termina (Lista o Error), la lista se recarga.
+
 ## Rutas web
 
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/songs` | Lista y zona de subida |
-| POST | `/songs` | Sube un archivo (JSON) |
+| POST | `/songs` | Sube un archivo (JSON) y lo encola |
+| GET | `/songs/status` | Estado en vivo de las canciones del usuario |
+| GET | `/songs/{id}/log` | Log de audio-separator (solo el dueño) |
+| POST | `/songs/{id}/retry` | Vuelve a encolar una canción con error (solo el dueño) |
 
 ## Autenticación
 

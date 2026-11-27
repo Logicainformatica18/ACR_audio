@@ -7,6 +7,7 @@ use App\Models\Song;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -19,6 +20,7 @@ class SongUploadTest extends TestCase
     {
         parent::setUp();
         Storage::fake('audio');
+        Queue::fake(); // la separación se prueba en SeparationTest
     }
 
     public function test_guests_cannot_see_or_upload_songs(): void

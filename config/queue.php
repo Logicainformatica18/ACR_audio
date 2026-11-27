@@ -39,7 +39,9 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Debe ser MAYOR que lo que tarda la separación más larga; si no,
+            // Laravel daría el trabajo por perdido y lo repetiría mientras sigue en marcha.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', (int) env('SEPARATOR_TIMEOUT', 3600) + 300),
             'after_commit' => false,
         ],
 

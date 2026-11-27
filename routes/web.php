@@ -12,6 +12,9 @@ Route::middleware('auth')->group(function () {
     // Canciones
     Route::get('songs', [SongController::class, 'index'])->name('songs.index');
     Route::post('songs', [SongController::class, 'store'])->name('songs.store');
+    Route::get('songs/status', [SongController::class, 'status'])->name('songs.status');
+    Route::get('songs/{song}/log', [SongController::class, 'log'])->whereNumber('song')->name('songs.log');
+    Route::post('songs/{song}/retry', [SongController::class, 'retry'])->whereNumber('song')->name('songs.retry');
 });
 
 require __DIR__.'/settings.php';

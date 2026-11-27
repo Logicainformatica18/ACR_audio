@@ -51,3 +51,24 @@ Registro de las decisiones tomadas en el proyecto y el motivo de cada una. Las m
 | F2.7 | `SongResource` no expone rutas de archivo ni el log | La interfaz no necesita saber dónde están los archivos |
 | F2.8 | nginx de Herd: `client_max_body_size` de **128M → 260M** en `C:\Users\USER\.config\herd\config\nginx\herd.conf` (copia en `herd.conf.bak-acr`) | Aunque PHP aceptaba 256M, nginx cortaba en 128M con un error 413. Se descubrió al subir un WAV de 198 MB |
 | F2.9 | Orden de la lista según la preferencia `songs_sort` (recientes, título o estado) con `CASE` en SQL | `CASE` funciona igual en MySQL y en SQLite (tests) |
+
+## Fase 3 — Separación en cola
+
+| # | Decisión | Por qué |
+|---|---|---|
+| F3.1 | Job `SeparateSong` en la cola `separation` (driver `database`) con **un solo worker** (`iniciar.bat`) | Una separación a la vez: la GPU no se reparte entre dos canciones |
+| F3.2 | Además, middleware `WithoutOverlapping('audio-separator')` con reintentos ilimitados solo para esperar turno (`tries = 0`) y `maxExceptions = 1` | Si alguien abre dos `iniciar.bat`, el segundo espera en vez de separar a la vez. Un error real no se reintenta: se marca como fallido |
+| F3.3 | Ejecución con **Symfony Process** pasando los argumentos como lista (sin shell) | Sin riesgo de inyección de comandos; las rutas las construye la app |
+| F3.4 | El límite de tiempo lo impone Symfony Process (`SEPARATOR_TIMEOUT`, 3600 s) | En Windows PHP no tiene `pcntl`, así que el worker no puede cortar trabajos por tiempo |
+| F3.5 | `retry_after` de la cola = `SEPARATOR_TIMEOUT + 300` por defecto | Si fuera menor (90 s por defecto), Laravel daría la separación por perdida y la repetiría mientras sigue en marcha |
+| F3.6 | `--custom_output_names` para obtener `vocals.flac`, `drums.flac`…, con respaldo que reconoce `…_(Vocals)_….flac` | Nombres fijos del servidor, independientes del nombre del archivo subido |
+| F3.7 | Se separa en `{canción}/work/` y solo al terminar bien se mueven las pistas a `stems/` dentro de una transacción | Un fallo a medias no deja pistas incompletas ni filas huérfanas |
+| F3.8 | **Solo modelos ya descargados** en `SEPARATOR_MODELS_DIR` | Con un modelo ausente, audio-separator lo descargaría **dentro de la carpeta del separador**, que no se debe modificar |
+| F3.9 | Log completo en `songs.log` (sin colores de consola, sin repintados de barras y en UTF-8 válido) y resumen en `songs.error` (la última línea con "error/exception…") | El usuario ve un mensaje corto y puede abrir el log entero desde la interfaz |
+| F3.10 | Progreso (%) leído de las barras de tqdm y guardado en caché, **solo ascendente** | demucs hace 2 pasadas, cada una con su barra de 0 a 100. Sin esto el % saltaba hacia atrás |
+| F3.11 | Estado en vivo por **polling** a `/songs/status` cada 2,5 s, solo mientras haya canciones en cola o procesando | Elegido por el usuario: sin websockets ni procesos extra. Si no hay nada activo, no se hacen peticiones |
+| F3.12 | Aviso "¿Está abierta la ventana de iniciar.bat?" si una canción lleva más de 20 s en cola y no se procesa ninguna | Es el error más probable de un usuario principiante |
+| F3.13 | Botón **Reintentar** para canciones con error | Si el fallo fue pasajero (por ejemplo la GPU ocupada), no hace falta volver a subir el archivo |
+| F3.14 | Duración con `ffprobe` (viene con ffmpeg) | Dato fiable sin decodificar el audio en PHP |
+| F3.15 | `phpunit.xml` vacía `SEPARATOR_BIN`/`SEPARATOR_MODELS_DIR` y los tests de subida usan `Queue::fake()` | En un primer intento, un test ejecutó el audio-separator real (54 s). Los tests no deben tocar el motor real nunca |
+| F3.16 | `*.bat` con saltos de línea CRLF (`.gitattributes`) | `cmd.exe` falla con etiquetas y `goto` en archivos con LF |

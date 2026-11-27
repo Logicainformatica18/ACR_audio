@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSongRequest;
 use App\Http\Resources\SongResource;
+use App\Jobs\SeparateSong;
 use App\Models\Song;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -61,7 +63,69 @@ class SongController extends Controller
             return $song;
         });
 
+        SeparateSong::dispatch($song);
+
         return response()->json(['song' => SongResource::make($song)->resolve()], 201);
+    }
+
+    /**
+     * Estado en vivo de las canciones del usuario (la lista lo consulta cada
+     * 2,5 s mientras haya canciones en cola o procesándose).
+     */
+    public function status(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Song::class);
+        $user = $request->user();
+
+        $songs = Song::ownedBy($user)->withCount('tracks')->get();
+
+        // Canciones de todos los usuarios que esperan turno (la cola es una sola).
+        $queue = Song::where('status', Song::STATUS_PENDING)->orderBy('queued_at')->orderBy('id')->pluck('id')->all();
+        $processingAny = Song::where('status', Song::STATUS_PROCESSING)->exists();
+
+        return response()->json([
+            'songs' => $songs->map(fn (Song $song) => [
+                ...SongResource::make($song)->resolve(),
+                'progress' => $song->status === Song::STATUS_PROCESSING
+                    ? Cache::get(SeparateSong::progressKey($song->id))
+                    : null,
+                'queue_position' => $song->status === Song::STATUS_PENDING
+                    ? array_search($song->id, $queue, true) + 1 + ($processingAny ? 1 : 0)
+                    : null,
+            ])->values(),
+        ]);
+    }
+
+    /** Salida completa de audio-separator (para ver por qué falló). */
+    public function log(Song $song): JsonResponse
+    {
+        $this->authorize('view', $song);
+
+        return response()->json(['log' => $song->log ?? '']);
+    }
+
+    /** Vuelve a poner en cola una canción que falló. */
+    public function retry(Request $request, Song $song): JsonResponse
+    {
+        $this->authorize('update', $song);
+
+        if ($song->status !== Song::STATUS_FAILED) {
+            return response()->json(['message' => 'Solo se pueden reintentar canciones con error.'], 422);
+        }
+
+        $song->update([
+            'status' => Song::STATUS_PENDING,
+            'model' => $request->user()->preferences()->effectiveModel(),
+            'error' => null,
+            'log' => null,
+            'queued_at' => now(),
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+
+        SeparateSong::dispatch($song);
+
+        return response()->json(['song' => SongResource::make($song)->resolve()]);
     }
 
     /** @return \Illuminate\Database\Eloquent\Collection<int, Song> */

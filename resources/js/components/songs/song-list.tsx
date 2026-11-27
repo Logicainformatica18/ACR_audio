@@ -4,16 +4,16 @@ import { type Song } from '@/types';
 import { Music } from 'lucide-react';
 import { type ReactNode } from 'react';
 
-interface Props {
-    songs: Song[];
+interface Props<T extends Song> {
+    songs: T[];
     /** Botones de cada fila (mezclador, renombrar, borrar...). */
-    actions?: (song: Song) => ReactNode;
+    actions?: (song: T) => ReactNode;
     /** Contenido extra bajo la fila (por ejemplo, el error o el progreso). */
-    details?: (song: Song) => ReactNode;
+    details?: (song: T) => ReactNode;
     emptyMessage?: string;
 }
 
-export function SongList({ songs, actions, details, emptyMessage = 'Aún no has subido canciones.' }: Props) {
+export function SongList<T extends Song>({ songs, actions, details, emptyMessage = 'Aún no has subido canciones.' }: Props<T>) {
     if (songs.length === 0) {
         return (
             <div className="text-muted-foreground flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-12 text-center">

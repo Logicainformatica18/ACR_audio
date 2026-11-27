@@ -28,6 +28,7 @@ class SongResource extends JsonResource
             'model' => $this->model,
             'tracks_count' => $this->whenCounted('tracks'),
             'created_at' => $this->created_at?->toIso8601String(),
+            'queued_at' => $this->queued_at?->toIso8601String(),
             'started_at' => $this->started_at?->toIso8601String(),
             'finished_at' => $this->finished_at?->toIso8601String(),
         ];

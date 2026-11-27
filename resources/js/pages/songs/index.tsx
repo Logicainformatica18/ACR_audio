@@ -1,5 +1,7 @@
 import { SongList } from '@/components/songs/song-list';
+import { SongStatusDetails } from '@/components/songs/song-status-details';
 import { UploadDropzone } from '@/components/songs/upload-dropzone';
+import { useSongStatus } from '@/hooks/use-song-status';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type Song, type UploadLimits } from '@/types';
 import { Head, router } from '@inertiajs/react';
@@ -13,10 +15,11 @@ interface Props {
 }
 
 export default function SongsIndex({ songs, limits }: Props) {
-    // Tras cada subida, recarga solo la lista (sin recargar la página).
-    const onUploaded = useCallback(() => {
-        router.reload({ only: ['songs'] });
-    }, []);
+    const liveSongs = useSongStatus(songs);
+    const anyProcessing = liveSongs.some((s) => s.status === 'processing');
+
+    // Recarga solo la lista (sin recargar la página).
+    const reloadSongs = useCallback(() => router.reload({ only: ['songs'] }), []);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -29,13 +32,16 @@ export default function SongsIndex({ songs, limits }: Props) {
                     </p>
                 </header>
 
-                <UploadDropzone limits={limits} onUploaded={onUploaded} />
+                <UploadDropzone limits={limits} onUploaded={reloadSongs} />
 
                 <section aria-labelledby="mis-canciones" className="space-y-3">
                     <h2 id="mis-canciones" className="text-lg font-semibold">
                         Mis canciones <span className="text-muted-foreground font-normal">({songs.length})</span>
                     </h2>
-                    <SongList songs={songs} />
+                    <SongList
+                        songs={liveSongs}
+                        details={(song) => <SongStatusDetails song={song} anyProcessing={anyProcessing} onRetried={reloadSongs} />}
+                    />
                 </section>
             </div>
         </AppLayout>

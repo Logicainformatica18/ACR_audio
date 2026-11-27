@@ -28,6 +28,9 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- Los tests NUNCA ejecutan el audio-separator real -->
+        <env name="SEPARATOR_BIN" value=""/>
+        <env name="SEPARATOR_MODELS_DIR" value=""/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
     </php>

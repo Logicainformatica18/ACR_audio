@@ -44,7 +44,26 @@
   - Los archivos quedan en `storage/app/private/audio/{usuario}/{canción}/original.ext`.
   - Las canciones de prueba se borraron después.
 
+## Fase 3 — Separación en cola con estado en vivo ✅
+
+- Al subir una canción se encola el job `SeparateSong`, que ejecuta audio-separator (`htdemucs_6s`, salida FLAC) con la GPU.
+- `iniciar.bat` arranca el worker. Si se cierra por un error, se reinicia solo.
+- Estado en vivo en la lista:
+  - **En cola**: posición en la cola y aviso si `iniciar.bat` parece cerrado.
+  - **Procesando**: barra con % y tiempo transcurrido.
+  - **Lista**.
+  - **Error**: resumen del fallo, botón "Ver log" y botón "Reintentar".
+- **Prueba real** con una **copia** de `D:\Pistas\Ballad Backing Track in A Minor _ C Major.mp3` (el original no se tocó; hash comprobado):
+  - Canción de 4:21 separada en **24 s**, con 6 pistas FLAC (voz, batería, bajo, guitarra, piano y otros).
+  - `nvidia-smi` durante la separación: **GPU al 84–87 %**, VRAM de 1,9 → 3,4 GB y `python.exe` (el de audio-separator) en la lista de procesos de la GPU. Al terminar volvió a 1 %.
+  - El log confirma: "CUDA is available in Torch, setting Torch device to CUDA".
+- La carpeta `separador` no se modificó (fechas de `modelos\` sin cambios).
+- 46 tests pasan.
+
 ## Problemas conocidos / pendientes
+
+- **Avisos de onnxruntime en el log** (`Failed to load cublas64_13.dll`, "onnxruntime-gpu is built with CUDA 13.x"): vienen del entorno de audio-separator. No afectan, porque `htdemucs_6s` usa PyTorch con CUDA 12.8, que funciona. Solo importarían con modelos ONNX (MDX). No se toca porque está en la carpeta `separador`.
+- **Tras actualizar el código** hay que cerrar y volver a abrir `iniciar.bat`: el worker carga el código al arrancar.
 
 - **No se pudo crear `D:\backups`.** La raíz `D:\` solo permite escribir a Administradores, y no se ejecutan comandos elevados. Siguen en su sitio:
   - `D:\github\_backup_git_ACR_audio` (historial git antiguo)

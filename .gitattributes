@@ -8,3 +8,6 @@
 
 CHANGELOG.md export-ignore
 README.md export-ignore
+
+# Los .bat de Windows necesitan CRLF para que goto/labels funcionen
+*.bat text eol=crlf

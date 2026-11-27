@@ -45,8 +45,15 @@ export interface Song {
     model: string | null;
     tracks_count?: number;
     created_at: string;
+    queued_at: string | null;
     started_at: string | null;
     finished_at: string | null;
+}
+
+/** Canción con datos de estado en vivo (GET /songs/status). */
+export interface LiveSong extends Song {
+    progress: number | null; // % mientras se procesa
+    queue_position: number | null; // posición en la cola mientras espera
 }
 
 export interface UploadLimits {

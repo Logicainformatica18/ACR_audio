@@ -75,11 +75,20 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 ## 3. Cómo arrancarla
 
 1. Herd debe estar abierto (icono en la bandeja del sistema).
-2. Entra en **http://acr_audio.test** e inicia sesión. Marca **Recordarme** para no tener que volver a entrar aunque cierres el navegador.
+2. Haz doble clic en **`iniciar.bat`** (en la carpeta del proyecto). Se abre una ventana negra: **déjala abierta** mientras uses ACR Audio. Es la que separa las canciones con la GPU, de una en una. Si la cierras, las canciones nuevas se quedan "En cola" sin perderse, y se procesan cuando la vuelvas a abrir.
+3. Entra en **http://acr_audio.test** e inicia sesión. Marca **Recordarme** para no tener que volver a entrar aunque cierres el navegador.
 
-> Las fases siguientes añaden la subida de canciones, la separación (con `iniciar.bat`) y el mezclador. Ver `PROGRESO.md`.
+## 4. Cómo usarla
 
-## 4. Comandos útiles
+1. Ve a **Canciones** en el menú.
+2. **Arrastra** una o varias canciones (MP3, WAV, FLAC, M4A u OGG, hasta 250 MB cada una) a la zona punteada, o haz clic en ella para elegirlas. Cada archivo muestra su barra de subida.
+3. Cada canción pasa por **En cola → Procesando (con %) → Lista**. Una canción de 4 minutos tarda unos 25 segundos con la RTX 5060 Ti.
+4. Si aparece **Error**, pulsa **Ver log** para ver el motivo o **Reintentar** para volver a intentarlo.
+5. Si una canción se queda mucho rato "En cola", comprueba que la ventana de `iniciar.bat` está abierta.
+
+> Si cambias el código del proyecto, cierra y vuelve a abrir `iniciar.bat` para que el worker use la versión nueva.
+
+## 5. Comandos útiles
 
 | Comando | Qué hace |
 |---|---|
@@ -88,7 +97,7 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 | `npm run build` | Vuelve a compilar el frontend tras cambiar archivos de `resources/js` |
 | `php artisan migrate` | Aplica migraciones nuevas sin borrar datos |
 
-## 5. Más documentación
+## 6. Más documentación
 
 - `ARQUITECTURA.md`: estructura, tablas, cola, almacenamiento y cómo se sirven los audios.
 - `DECISIONES.md`: qué se decidió y por qué.
