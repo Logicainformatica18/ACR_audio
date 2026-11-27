@@ -1,10 +1,12 @@
 import { SongList } from '@/components/songs/song-list';
 import { SongStatusDetails } from '@/components/songs/song-status-details';
 import { UploadDropzone } from '@/components/songs/upload-dropzone';
+import { Button } from '@/components/ui/button';
 import { useSongStatus } from '@/hooks/use-song-status';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type Song, type UploadLimits } from '@/types';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useCallback } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Canciones', href: '/songs' }];
@@ -40,6 +42,15 @@ export default function SongsIndex({ songs, limits }: Props) {
                     </h2>
                     <SongList
                         songs={liveSongs}
+                        actions={(song) =>
+                            song.status === 'ready' && (
+                                <Button size="sm" asChild>
+                                    <Link href={route('songs.show', song.id)}>
+                                        <SlidersHorizontal /> Abrir mezclador
+                                    </Link>
+                                </Button>
+                            )
+                        }
                         details={(song) => <SongStatusDetails song={song} anyProcessing={anyProcessing} onRetried={reloadSongs} />}
                     />
                 </section>

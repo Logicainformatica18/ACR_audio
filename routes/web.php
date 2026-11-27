@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MixerController;
 use App\Http\Controllers\SongController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -15,6 +16,14 @@ Route::middleware('auth')->group(function () {
     Route::get('songs/status', [SongController::class, 'status'])->name('songs.status');
     Route::get('songs/{song}/log', [SongController::class, 'log'])->whereNumber('song')->name('songs.log');
     Route::post('songs/{song}/retry', [SongController::class, 'retry'])->whereNumber('song')->name('songs.retry');
+
+    // Mezclador
+    Route::get('songs/{song}', [MixerController::class, 'show'])->whereNumber('song')->name('songs.show');
+    Route::put('songs/{song}/mixer', [MixerController::class, 'save'])->whereNumber('song')->name('songs.mixer.save');
+    Route::get('songs/{song}/tracks/{track}/audio', [MixerController::class, 'audio'])
+        ->whereNumber(['song', 'track'])
+        ->scopeBindings()
+        ->name('songs.tracks.audio');
 });
 
 require __DIR__.'/settings.php';

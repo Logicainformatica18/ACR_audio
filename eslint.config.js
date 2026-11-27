@@ -38,7 +38,8 @@ export default [
         },
     },
     {
-        ignores: ['vendor', 'node_modules', 'public', 'bootstrap/ssr', 'tailwind.config.js'],
+        // separador/ contiene un entorno de Python (con JS propio) y referencias/ el HTML original.
+        ignores: ['vendor', 'node_modules', 'public', 'bootstrap/ssr', 'tailwind.config.js', 'separador', 'referencias', 'storage'],
     },
     prettier, // Turn off all rules that might conflict with Prettier
 ];

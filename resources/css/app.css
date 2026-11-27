@@ -190,3 +190,19 @@
 .glow-border {
   animation: flicker 1.5s infinite;
 }
+
+/* ===== Mezclador (colores de referencias/mezclador.html) ===== */
+.mixer {
+    --mx-lane: #dce1e8;
+    --mx-muted: #5a6475;
+    --mx-accent: #b86e00;
+    --mx-accent-ink: #ffffff;
+    --mx-hatch: rgba(27, 34, 48, 0.3);
+}
+.dark .mixer {
+    --mx-lane: #13171d;
+    --mx-muted: #9aa3b2;
+    --mx-accent: #f2a93b;
+    --mx-accent-ink: #1b1406;
+    --mx-hatch: rgba(230, 233, 239, 0.24);
+}

@@ -72,3 +72,22 @@ Registro de las decisiones tomadas en el proyecto y el motivo de cada una. Las m
 | F3.14 | Duración con `ffprobe` (viene con ffmpeg) | Dato fiable sin decodificar el audio en PHP |
 | F3.15 | `phpunit.xml` vacía `SEPARATOR_BIN`/`SEPARATOR_MODELS_DIR` y los tests de subida usan `Queue::fake()` | En un primer intento, un test ejecutó el audio-separator real (54 s). Los tests no deben tocar el motor real nunca |
 | F3.16 | `*.bat` con saltos de línea CRLF (`.gitattributes`) | `cmd.exe` falla con etiquetas y `goto` en archivos con LF |
+
+## Fase 4 — Mezclador
+
+| # | Decisión | Por qué |
+|---|---|---|
+| F4.1 | Página React (`songs/mixer.tsx`) con la lógica de audio de `referencias/mezclador.html` movida a una clase (`lib/mixer/engine.ts`) | Se conserva lo que ya funcionaba (sincronía con un AudioContext, rampas de ganancia para los silencios y envolvente de la onda) y React solo dibuja la interfaz |
+| F4.2 | Cabezales, reloj y "en silencio" se actualizan **fuera de React** (refs + `requestAnimationFrame`) | Re-renderizar 6 pistas 60 veces por segundo sería innecesario y menos fluido |
+| F4.3 | Las pistas se descargan con `fetch` (2 a la vez, con % de progreso) y se decodifican con `decodeAudioData` | Web Audio necesita el audio completo en memoria para la reproducción sincronizada y para dibujar la onda |
+| F4.4 | La ruta de audio usa `BinaryFileResponse` (`response()->file`) | Atiende `Range` (206 Partial Content) sin cargar el archivo en memoria de PHP. Protegida por login y policy, con `scopeBindings` (la pista debe ser de esa canción) |
+| F4.5 | Guardado automático del **estado completo** (volumen general + ajustes de cada pista + lista de silencios) con un único `PUT /songs/{id}/mixer`, 0,7 s después del último cambio | Más simple y robusto que una petición por acción: es idempotente, sin problemas de orden y una sola transacción. Varios cambios seguidos = una sola petición |
+| F4.6 | Nunca dos guardados a la vez; si hay cambios durante uno, se envía otro al terminar. Al cerrar la pestaña o salir del mezclador se envía lo pendiente con `fetch keepalive` | No se pierden cambios hechos justo antes de salir |
+| F4.7 | Indicador visible: "Cambios sin guardar… / Guardando… / Guardado / No se pudo guardar + Reintentar" | El usuario pidió guardado sin botón; el indicador le da confianza de que funciona |
+| F4.8 | Validación del guardado: las pistas deben ser de la canción; volumen 0–1; silencios dentro de la duración (+1 s de margen) y de al menos 0,05 s; máximo 500 | Nadie puede escribir ajustes en pistas ajenas ni guardar datos absurdos |
+| F4.9 | El volumen general se guarda en las **preferencias del usuario** (común a todas sus canciones) | Es un ajuste de escucha personal, no de una canción |
+| F4.10 | "Quitar todos los silencios" pide confirmación con un diálogo (`ConfirmDialog`, reutilizable) | Es una acción que borra varios datos de golpe |
+| F4.11 | Atajos de teclado (Espacio, 1–9, Inicio) desactivables en preferencias | Igual que el HTML original; se ignoran mientras se escribe en un campo |
+| F4.12 | Colores del mezclador como variables CSS `--mx-*` con variante oscura | Mismo aspecto que el HTML original, integrado con el tema claro u oscuro de la app |
+| F4.13 | Los tests llaman a `withoutVite()` | No dependen de haber compilado el frontend |
+| F4.14 | ESLint ignora `separador/`, `referencias/` y `storage/` | `npm run lint` (`eslint . --fix`) revisaba el JavaScript del entorno de Python dentro de `separador/.venv` |

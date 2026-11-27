@@ -116,6 +116,39 @@ La página Canciones llama a `GET /songs/status` cada 2,5 s **solo** mientras al
 
 Cuando una termina (Lista o Error), la lista se recarga.
 
+## Mezclador y cómo se sirven los audios
+
+```
+GET /songs/{id}  (MixerController@show, policy view, solo canciones "ready")
+  └─ props: song, tracks[{id, stem, label, color, url, volume, muted, solo, silences[]}],
+            preferences{master_volume, keyboard_shortcuts}
+
+Navegador (pages/songs/mixer.tsx + lib/mixer/engine.ts)
+  1. por cada pista (2 a la vez): fetch(url) con % → decodeAudioData → AudioBuffer
+  2. AudioContext → GainNode por pista → GainNode general → altavoces
+  3. reproducir: un AudioBufferSourceNode por pista, todos con el mismo start(when, offset)
+  4. mute/solo/volumen/silencios: setTargetAtTime() sobre la ganancia de cada pista
+     (los silencios se agendan por adelantado en el tiempo del AudioContext)
+
+GET /songs/{id}/tracks/{track}/audio  (MixerController@audio)
+  · auth + policy view + scopeBindings (la pista pertenece a la canción)
+  · BinaryFileResponse: 200 completo o 206 con Range; Content-Type audio/flac
+  · Cache-Control: private (el navegador puede reutilizarlo; los proxies no)
+```
+
+### Guardado automático
+
+```
+cambio (M, S, volumen, silencio, volumen general)
+  └─ 0,7 s sin más cambios ─► PUT /songs/{id}/mixer  (JSON con el estado COMPLETO)
+                                 SaveMixerRequest valida (pistas de la canción, rangos…)
+                                 transacción:
+                                   track_settings: updateOrCreate por pista
+                                   scheduled_silences: borrar los de la canción + insertar
+                                   user_preferences.master_volume
+salir de la página con cambios pendientes ─► fetch keepalive con el mismo PUT
+```
+
 ## Rutas web
 
 | Método | Ruta | Qué hace |
@@ -125,6 +158,9 @@ Cuando una termina (Lista o Error), la lista se recarga.
 | GET | `/songs/status` | Estado en vivo de las canciones del usuario |
 | GET | `/songs/{id}/log` | Log de audio-separator (solo el dueño) |
 | POST | `/songs/{id}/retry` | Vuelve a encolar una canción con error (solo el dueño) |
+| GET | `/songs/{id}` | Mezclador (solo el dueño y solo si está lista) |
+| GET | `/songs/{id}/tracks/{pista}/audio` | Archivo de la pista, con Range |
+| PUT | `/songs/{id}/mixer` | Guardado automático del mezclador |
 
 ## Autenticación
 

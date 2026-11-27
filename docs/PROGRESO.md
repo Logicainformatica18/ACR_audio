@@ -60,10 +60,37 @@
 - La carpeta `separador` no se modificó (fechas de `modelos\` sin cambios).
 - 46 tests pasan.
 
+## Fase 4 — Mezclador con guardado automático ✅
+
+- `referencias/mezclador.html`: copia del mezclador original.
+- Botón **Abrir mezclador** en las canciones listas. Página `/songs/{id}` con:
+  - las pistas cargadas automáticamente (barra de carga)
+  - la onda de cada pista
+  - reproducir/pausar, volver al inicio y reloj
+  - volumen general
+  - M (mute), S (solo) y volumen por pista
+  - clic en la onda para saltar y arrastrar para programar un silencio
+  - formulario de silencios (Desde/Hasta con botón "Ahora"), lista con Ir/Quitar y "Quitar todos" con confirmación
+  - atajos de teclado
+- Audio servido por `/songs/{id}/tracks/{pista}/audio` (solo el dueño), con soporte de Range.
+- Guardado automático en la base de datos de volumen, mute, solo, silencios y volumen general, con indicador de estado.
+- Verificado:
+  - 54 tests pasan.
+  - Por HTTP real: audio completo (200, `audio/flac`) y parcial (`Range: bytes=1000-1999` → 206 con `Content-Range`). Sin sesión → login.
+  - En **Microsoft Edge** (modo invisible, controlado con puppeteer-core):
+    - las 6 pistas cargan y se decodifican en 2 s
+    - reproduce y pausa
+    - mute, volumen y silencio creado arrastrando se guardan solos con **una** petición
+    - **al recargar la página siguen ahí**
+    - la tecla `2` silencia la pista 2
+    - modo oscuro correcto
+    - sin errores en la consola
+
 ## Problemas conocidos / pendientes
 
 - **Avisos de onnxruntime en el log** (`Failed to load cublas64_13.dll`, "onnxruntime-gpu is built with CUDA 13.x"): vienen del entorno de audio-separator. No afectan, porque `htdemucs_6s` usa PyTorch con CUDA 12.8, que funciona. Solo importarían con modelos ONNX (MDX). No se toca porque está en la carpeta `separador`.
 - **Tras actualizar el código** hay que cerrar y volver a abrir `iniciar.bat`: el worker carga el código al arrancar.
+- **Memoria del mezclador:** Web Audio guarda las pistas decodificadas en la RAM del navegador. Son unos 90 MB por pista para una canción de 4–5 minutos, así que unos 550 MB para 6 pistas. Con canciones muy largas (más de 20 minutos) el navegador podría quedarse sin memoria. Pasaba igual con el `mezclador.html` original.
 
 - **No se pudo crear `D:\backups`.** La raíz `D:\` solo permite escribir a Administradores, y no se ejecutan comandos elevados. Siguen en su sitio:
   - `D:\github\_backup_git_ACR_audio` (historial git antiguo)

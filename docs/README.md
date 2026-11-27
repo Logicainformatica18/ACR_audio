@@ -85,6 +85,13 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 3. Cada canción pasa por **En cola → Procesando (con %) → Lista**. Una canción de 4 minutos tarda unos 25 segundos con la RTX 5060 Ti.
 4. Si aparece **Error**, pulsa **Ver log** para ver el motivo o **Reintentar** para volver a intentarlo.
 5. Si una canción se queda mucho rato "En cola", comprueba que la ventana de `iniciar.bat` está abierta.
+6. Cuando esté **Lista**, pulsa **Abrir mezclador**. Las pistas se cargan solas y luego puedes:
+   - **▶** reproducir o pausar (o la barra espaciadora), y **⏮** volver al inicio.
+   - **M** para silenciar una pista y **S** para escuchar solo esa (puedes combinar varias S). También el control de volumen de cada pista y el volumen general.
+   - **Clic** sobre una onda para saltar a ese momento.
+   - **Arrastrar** sobre una onda para programar un silencio en esa pista. También puedes escribir los tiempos en "Silencios programados"; el botón *Ahora* pone el momento actual. La × de cada silencio lo quita.
+   - Teclas **1** a **9** para silenciar cada pista e **Inicio** para volver al principio.
+7. **No hay botón de guardar**: todo se guarda solo. Arriba a la derecha verás "Guardando…" y luego "Guardado". La próxima vez que abras la canción estará igual que la dejaste.
 
 > Si cambias el código del proyecto, cierra y vuelve a abrir `iniciar.bat` para que el worker use la versión nueva.
 
