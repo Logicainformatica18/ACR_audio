@@ -116,6 +116,13 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
    - Teclas **1** a **9** para silenciar cada pista e **Inicio** para volver al principio.
 7. **No hay botón de guardar**: todo se guarda solo. Arriba a la derecha verás "Guardando…" y luego "Guardado". La próxima vez que abras la canción estará igual que la dejaste.
 8. El botón **⬇** de cada pista la descarga en FLAC (por ejemplo `Mi canción - Voz.flac`).
+9. **Exportar mezcla** (barra de reproducción): crea un solo archivo con exactamente lo que oyes (mute, solo, volúmenes, silencios y la Original si está visible).
+   - Elige **MP3** (320 kbps), **FLAC** o **WAV**, la **canción completa o un tramo** (con *Ahora* pones el momento actual) y el nombre, que se propone solo («Mi canción - sin batería»).
+   - En canciones separadas, las **mezclas rápidas** *Sin batería*, *Sin guitarra*, *Sin voz* y *Sin bajo* lo hacen todo con un clic.
+   - La descarga empieza sola. Puedes **Cancelar** mientras se mezcla.
+   - Si la mezcla iba a saturar, se baja el volumen de todo por igual (el balance no cambia) y la lista indica cuántos dB.
+10. **Mezclas guardadas** (debajo de las pistas): **Guardar esta mezcla** guarda mute, solo, volúmenes, silencios y tramo. Escribe un nombre (doble clic para cambiarlo luego). Con **Cargar** la vuelves a aplicar, con **Exportar** abres el panel con ella y con 🗑 la borras.
+11. **Archivos exportados:** cada exportación queda guardada para **Descargar** otra vez. Bórrala con 🗑 cuando no la necesites; la lista muestra cuánto ocupan.
 
 ### Acordes
 
@@ -194,6 +201,7 @@ En **Contraseña** puedes cambiar tu contraseña.
 |---|---|
 | `php artisan usuario:crear` | Crea un usuario y pide los datos |
 | `php artisan test` | Ejecuta los tests automáticos (usan una base temporal en memoria, no tocan tus datos) |
+| `npm run test:js` | Tests de JavaScript (vitest): reglas de Exportar mezcla |
 | `npm run build` | Vuelve a compilar el frontend tras cambiar archivos de `resources/js` |
 | `php artisan migrate` | Aplica migraciones nuevas sin borrar datos |
 | `php artisan acordes:analizar` | Encola el análisis de acordes de las canciones separadas que nunca se analizaron. Con un id (`acordes:analizar 7`) analiza esa canción; con `--todas`, todas |

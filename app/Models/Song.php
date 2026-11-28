@@ -125,6 +125,16 @@ class Song extends Model
         ];
     }
 
+    public function mixes(): HasMany
+    {
+        return $this->hasMany(Mix::class)->latest('updated_at');
+    }
+
+    public function exports(): HasMany
+    {
+        return $this->hasMany(MixExport::class)->latest();
+    }
+
     public function folder(): BelongsTo
     {
         return $this->belongsTo(Folder::class);

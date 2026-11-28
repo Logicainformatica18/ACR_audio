@@ -4,6 +4,7 @@ use App\Http\Controllers\ChordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FolderController;
 use App\Http\Controllers\MixerController;
+use App\Http\Controllers\MixExportController;
 use App\Http\Controllers\SongController;
 use App\Http\Controllers\YoutubeController;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +30,14 @@ Route::middleware('auth')->group(function () {
     Route::post('songs/restore', [SongController::class, 'restore'])->name('songs.restore');
     Route::post('songs/move', [SongController::class, 'move'])->name('songs.move');
     Route::post('songs/bulk', [SongController::class, 'bulk'])->name('songs.bulk');
+
+    // Exportar mezcla y mezclas guardadas
+    Route::post('songs/{song}/exports', [MixExportController::class, 'store'])->whereNumber('song')->name('songs.exports.store');
+    Route::get('songs/{song}/exports/{export}/download', [MixExportController::class, 'download'])->whereNumber(['song', 'export'])->name('songs.exports.download');
+    Route::delete('songs/{song}/exports/{export}', [MixExportController::class, 'destroy'])->whereNumber(['song', 'export'])->name('songs.exports.destroy');
+    Route::post('songs/{song}/mixes', [MixExportController::class, 'storeMix'])->whereNumber('song')->name('songs.mixes.store');
+    Route::patch('songs/{song}/mixes/{mix}', [MixExportController::class, 'updateMix'])->whereNumber(['song', 'mix'])->name('songs.mixes.update');
+    Route::delete('songs/{song}/mixes/{mix}', [MixExportController::class, 'destroyMix'])->whereNumber(['song', 'mix'])->name('songs.mixes.destroy');
 
     // YouTube
     Route::post('youtube/inspect', [YoutubeController::class, 'inspect'])->middleware('throttle:30,1')->name('youtube.inspect');

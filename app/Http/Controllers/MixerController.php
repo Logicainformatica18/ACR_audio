@@ -61,6 +61,9 @@ class MixerController extends Controller
             ],
             // Acordes guardados: salen de la BD al instante, sin volver a analizar.
             ...ChordController::payload($song),
+            // Mezclas guardadas y archivos exportados de esta canción.
+            'mixes' => $song->mixes()->get()->map(fn ($m) => $m->toClient())->values(),
+            'exports' => $song->exports()->with('song')->get()->map(fn ($e) => $e->toClient())->values(),
         ]);
     }
 

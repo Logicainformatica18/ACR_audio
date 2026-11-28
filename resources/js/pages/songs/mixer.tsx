@@ -3,6 +3,8 @@ import { InlineEdit } from '@/components/inline-edit';
 import { ChordEditDialog } from '@/components/mixer/chord-edit-dialog';
 import { ChordLane, ChordZoom } from '@/components/mixer/chord-lane';
 import { ChordSheet } from '@/components/mixer/chord-sheet';
+import { ExportDialog, type ExportProgress, type ExportRequest } from '@/components/mixer/export-dialog';
+import { MixesPanel, type MixExportFile, type MixSettings, type SavedMix } from '@/components/mixer/mixes-panel';
 import { TrackLane } from '@/components/mixer/track-lane';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
@@ -17,6 +19,17 @@ import {
     type ChordItem,
 } from '@/lib/mixer/chords';
 import { computeEnvelope, isAudible, loadTrack, mergedSilences, MixerEngine, type MixTrackState, type Silence } from '@/lib/mixer/engine';
+import {
+    antiClipGain,
+    buildMixPlan,
+    describeMix,
+    encodeWav,
+    peakOf,
+    renderMix,
+    suggestName,
+    type ExportFormat,
+    type PlanInput,
+} from '@/lib/mixer/export';
 import { clamp, fmt, fmtR, parseTime } from '@/lib/mixer/time';
 import { useAutosave, type SaveStatus } from '@/lib/mixer/use-autosave';
 import { cn } from '@/lib/utils';
@@ -31,6 +44,7 @@ import {
     Download,
     Eye,
     EyeOff,
+    FileDown,
     Layers,
     ListMusic,
     LoaderCircle,
@@ -66,6 +80,8 @@ interface Props {
     preferences: { master_volume: number; keyboard_shortcuts: boolean };
     analysis: ChordAnalysis;
     chords: ChordItem[];
+    mixes: SavedMix[];
+    exports: MixExportFile[];
 }
 
 let nextKey = 1;
@@ -80,7 +96,15 @@ function readSheetPref(): boolean {
     }
 }
 
-export default function Mixer({ song, tracks, preferences, analysis: initialAnalysis, chords: initialChords }: Props) {
+export default function Mixer({
+    song,
+    tracks,
+    preferences,
+    analysis: initialAnalysis,
+    chords: initialChords,
+    mixes: initialMixes,
+    exports: initialExports,
+}: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Canciones', href: '/songs' },
         { title: song.title, href: `/songs/${song.id}` },
@@ -245,8 +269,8 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
     const [loadedIds, setLoadedIds] = useState<Set<number>>(new Set());
     const visibleIds = useMemo(() => new Set(tracks.filter((t) => !t.original || showOriginal).map((t) => t.id)), [tracks, showOriginal]);
 
-    const toggleOriginal = async () => {
-        const show = !showOriginal;
+    const toggleOriginal = () => setOriginalVisible(!showOriginal);
+    const setOriginalVisible = async (show: boolean) => {
         setShowOriginal(show);
         const engine = engineRef.current;
         if (!show || !originalTrack || !engine || loadedIds.has(originalTrack.id)) return;
@@ -266,6 +290,213 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
             if (engine.playing) engine.seek(engine.now());
         } catch (e) {
             setMessage('No se pudo cargar la pista original: ' + (e instanceof Error ? e.message : String(e)));
+        }
+    };
+
+    // ----- Exportar mezcla y mezclas guardadas -----
+    const [mixes, setMixes] = useState<SavedMix[]>(initialMixes);
+    const [exportsList, setExportsList] = useState<MixExportFile[]>(initialExports);
+    const [exportOpen, setExportOpen] = useState(false);
+    const [exportFormat, setExportFormat] = useState<ExportFormat>('mp3');
+    const [exportRange, setExportRange] = useState<{ start: number; end: number } | null>(null);
+    const [exportMixId, setExportMixId] = useState<number | null>(null);
+    const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+    const exportAbort = useRef<AbortController | null>(null);
+    const [editingMixId, setEditingMixId] = useState<number | null>(null);
+    const [confirmDeleteMix, setConfirmDeleteMix] = useState<SavedMix | null>(null);
+    const jsonHeaders = { headers: { Accept: 'application/json' } };
+
+    const exportTracks = useMemo(
+        () => tracks.map((t) => ({ id: t.id, label: labels[t.id] ?? t.label, stem: t.stem, original: t.original })),
+        [tracks, labels],
+    );
+    const planInput = (over?: {
+        mix?: MixTrackState[];
+        range?: { start: number; end: number } | null;
+        silences?: Silence[];
+        master?: number;
+        visible?: Set<number>;
+    }): PlanInput => ({
+        tracks: exportTracks,
+        mix: over?.mix ?? mix,
+        silences: over?.silences ?? silences,
+        visibleIds: over?.visible ?? visibleIds,
+        master: over?.master ?? master,
+        duration,
+        range: over && 'range' in over ? (over.range ?? null) : exportRange,
+    });
+
+    /** Renderiza lo que suena, lo sube como WAV y el servidor lo codifica; la descarga empieza sola. */
+    const runExport = async (req: ExportRequest, over?: { mix?: MixTrackState[] }) => {
+        const engine = engineRef.current;
+        if (!engine || !ready) return;
+        const plan = buildMixPlan(planInput({ mix: over?.mix, range: req.range }));
+        if (!plan.tracks.length) return void toast.error('No suena ninguna pista: activa alguna antes de exportar.');
+        const buffers = new Map<number, AudioBuffer>();
+        for (const t of plan.tracks) {
+            const b = engine.buffer(t.id);
+            if (b) buffers.set(t.id, b);
+        }
+        const abort = new AbortController();
+        exportAbort.current = abort;
+        setExportProgress({ phase: 'render', pct: 0 });
+        try {
+            const rendered = await renderMix(plan, buffers, (pct) => setExportProgress({ phase: 'render', pct }), abort.signal);
+            const channels = [rendered.getChannelData(0), rendered.getChannelData(1)];
+            const gain = antiClipGain(peakOf(channels));
+            const wav = encodeWav(channels, rendered.sampleRate, gain);
+            const form = new FormData();
+            form.append('file', new Blob([wav], { type: 'audio/wav' }), 'mezcla.wav');
+            form.append('format', req.format);
+            form.append('name', req.name);
+            form.append('gain_applied', String(Math.round(gain * 1000) / 1000));
+            if (req.range) {
+                form.append('range_start', String(plan.start));
+                form.append('range_end', String(plan.end));
+            }
+            if (exportMixId) form.append('mix_id', String(exportMixId));
+            setExportProgress({ phase: 'upload', pct: 0 });
+            const { data } = await axios.post<{ export: MixExportFile }>(route('songs.exports.store', song.id), form, {
+                ...jsonHeaders,
+                signal: abort.signal,
+                onUploadProgress: (ev) => {
+                    if (!ev.total) return;
+                    const pct = Math.round((ev.loaded / ev.total) * 100);
+                    setExportProgress(pct >= 100 ? { phase: 'encode', pct: 100 } : { phase: 'upload', pct });
+                },
+            });
+            setExportsList((l) => [data.export, ...l]);
+            setExportOpen(false);
+            toast.success(`Exportada: ${data.export.name}.${data.export.format}${gain < 0.999 ? ' (volumen ajustado para no saturar)' : ''}`);
+            // La descarga empieza sola.
+            const a = document.createElement('a');
+            a.href = data.export.download_url;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch (e) {
+            if (axios.isCancel(e) || (e instanceof DOMException && e.name === 'AbortError')) toast('Exportación cancelada.');
+            else
+                toast.error(
+                    (e as AxiosError<{ message?: string }>).response?.data?.message ?? (e instanceof Error ? e.message : 'No se pudo exportar.'),
+                );
+        } finally {
+            setExportProgress(null);
+            exportAbort.current = null;
+        }
+    };
+
+    /** Mezclas rápidas: silencian una pista (y quitan los solo) y exportan la canción completa. */
+    const quickMixes = hasStems
+        ? (
+              [
+                  ['drums', 'Sin batería'],
+                  ['guitar', 'Sin guitarra'],
+                  ['vocals', 'Sin voz'],
+                  ['bass', 'Sin bajo'],
+              ] as const
+          )
+              .filter(([stem]) => tracks.some((t) => t.stem === stem))
+              .map(([stem, label]) => ({
+                  label,
+                  onClick: () => {
+                      const target = tracks.find((t) => t.stem === stem)!.id;
+                      const next = mix.map((t) => (t.id === target ? { ...t, muted: true, solo: false } : { ...t, solo: false }));
+                      setMix(next);
+                      setExportRange(null);
+                      setExportMixId(null);
+                      const name = suggestName(song.title, planInput({ mix: next, range: null }));
+                      setMessage(`${label}: se silenció ${labels[target] ?? stem} y se exporta la canción completa.`);
+                      void runExport({ format: exportFormat, range: null, name }, { mix: next });
+                  },
+              }))
+        : [];
+
+    /** Ajustes actuales del mezclador como mezcla guardable. */
+    const currentSettings = (): MixSettings => ({
+        master,
+        tracks: mix.map((t) => ({ id: t.id, volume: t.volume, muted: t.muted, solo: t.solo })),
+        silences: silences.map((s) => ({ track_id: s.trackId, start: +s.start.toFixed(3), end: +s.end.toFixed(3) })),
+        show_original: showOriginal,
+        range: exportRange,
+    });
+
+    const summarize = (s: MixSettings) => {
+        const visible = new Set(tracks.filter((t) => !t.original || s.show_original).map((t) => t.id));
+        const input = planInput({
+            mix: s.tracks,
+            silences: s.silences.map((x, i) => ({ key: -i - 1, trackId: x.track_id, start: x.start, end: x.end })),
+            master: s.master,
+            range: s.range,
+            visible,
+        });
+        const desc = describeMix(input);
+        const parts = [desc.charAt(0).toUpperCase() + desc.slice(1)];
+        if (s.silences.length) parts.push(`${s.silences.length} silencio${s.silences.length > 1 ? 's' : ''}`);
+        if (s.range) parts.push(`tramo ${fmt(s.range.start)}–${fmt(s.range.end)}`);
+        parts.push(`volumen general ${Math.round(s.master * 100)} %`);
+        return parts.join(' · ');
+    };
+
+    const saveMix = async () => {
+        const desc = describeMix(planInput());
+        try {
+            const { data } = await axios.post<{ mix: SavedMix }>(
+                route('songs.mixes.store', song.id),
+                { name: desc.charAt(0).toUpperCase() + desc.slice(1), settings: currentSettings() },
+                jsonHeaders,
+            );
+            setMixes((l) => [data.mix, ...l]);
+            setEditingMixId(data.mix.id); // nombre listo para escribir encima
+            toast.success('Mezcla guardada. Escribe un nombre si quieres.');
+        } catch (e) {
+            toast.error((e as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo guardar la mezcla.');
+        }
+    };
+
+    const renameMix = async (m: SavedMix, name: string) => {
+        setMixes((l) => l.map((x) => (x.id === m.id ? { ...x, name } : x)));
+        try {
+            await axios.patch(route('songs.mixes.update', [song.id, m.id]), { name }, jsonHeaders);
+        } catch {
+            setMixes((l) => l.map((x) => (x.id === m.id ? m : x)));
+            toast.error('No se pudo renombrar la mezcla.');
+        }
+    };
+
+    /** Carga una mezcla en el mezclador (se guarda sola como los demás cambios). */
+    const loadMix = (m: SavedMix) => {
+        const s = m.settings;
+        const byId = new Map(s.tracks.map((t) => [t.id, t]));
+        setMix((list) => list.map((t) => (byId.has(t.id) ? { ...t, ...byId.get(t.id)! } : t)));
+        setSilences(s.silences.map((x) => ({ key: nextKey++, trackId: x.track_id, start: x.start, end: x.end })));
+        setMaster(s.master);
+        if (originalTrack && s.show_original !== showOriginal) void setOriginalVisible(s.show_original);
+        setExportRange(s.range);
+        setExportMixId(m.id);
+        setMessage(`Mezcla «${m.name}» cargada.`);
+        return s;
+    };
+
+    const deleteMix = async (m: SavedMix) => {
+        setMixes((l) => l.filter((x) => x.id !== m.id));
+        try {
+            await axios.delete(route('songs.mixes.destroy', [song.id, m.id]), jsonHeaders);
+            toast.success(`Se borró la mezcla «${m.name}».`);
+        } catch {
+            setMixes((l) => [m, ...l]);
+            toast.error('No se pudo borrar la mezcla.');
+        }
+    };
+
+    const deleteExport = async (f: MixExportFile) => {
+        setExportsList((l) => l.filter((x) => x.id !== f.id));
+        try {
+            await axios.delete(route('songs.exports.destroy', [song.id, f.id]), jsonHeaders);
+            toast.success(`Se borró «${f.name}.${f.format}».`);
+        } catch {
+            setExportsList((l) => [f, ...l]);
+            toast.error('No se pudo borrar el archivo.');
         }
     };
 
@@ -505,6 +736,18 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                             />
                         </label>
                         <SaveIndicator status={saveStatus} onRetry={retrySave} />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!ready}
+                            onClick={() => {
+                                setExportMixId(null);
+                                setExportOpen(true);
+                            }}
+                            title="Un archivo con exactamente lo que suena"
+                        >
+                            <FileDown /> Exportar mezcla
+                        </Button>
                     </div>
                 </div>
 
@@ -772,6 +1015,55 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                             setConfirmReanalyze(false);
                             const err = await reanalyze();
                             setMessage(err ?? 'Análisis de acordes en cola. Los acordes nuevos aparecerán a medida que se detecten.');
+                        }}
+                    />
+
+                    <ExportDialog
+                        open={exportOpen}
+                        onClose={() => setExportOpen(false)}
+                        duration={duration}
+                        now={() => engineRef.current?.now() ?? 0}
+                        suggest={(range) => suggestName(song.title, planInput({ range }))}
+                        initialRange={exportRange}
+                        format={exportFormat}
+                        onFormatChange={setExportFormat}
+                        progress={exportProgress}
+                        onCancel={() => exportAbort.current?.abort()}
+                        quick={quickMixes}
+                        onExport={(req) => {
+                            setExportRange(req.range);
+                            void runExport(req);
+                        }}
+                    />
+
+                    <MixesPanel
+                        mixes={mixes}
+                        exports={exportsList}
+                        summarize={summarize}
+                        editingMixId={editingMixId}
+                        setEditingMixId={setEditingMixId}
+                        onSave={() => void saveMix()}
+                        onRename={(m, name) => void renameMix(m, name)}
+                        onLoad={loadMix}
+                        onExport={(m) => {
+                            loadMix(m);
+                            setExportOpen(true);
+                        }}
+                        onDeleteMix={setConfirmDeleteMix}
+                        onDeleteExport={(f) => void deleteExport(f)}
+                        disabled={!ready}
+                    />
+                    <ConfirmDialog
+                        open={confirmDeleteMix !== null}
+                        onOpenChange={(o) => !o && setConfirmDeleteMix(null)}
+                        title="¿Borrar esta mezcla guardada?"
+                        description={`Se borrarán los ajustes de «${confirmDeleteMix?.name}». Los archivos que exportaste con ella se conservan.`}
+                        confirmLabel="Borrar mezcla"
+                        destructive
+                        onConfirm={() => {
+                            const m = confirmDeleteMix;
+                            setConfirmDeleteMix(null);
+                            if (m) void deleteMix(m);
                         }}
                     />
 

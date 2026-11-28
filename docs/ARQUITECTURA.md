@@ -11,6 +11,7 @@ app/
     Track.php                         pista separada
     TrackSetting.php                  volumen / mute / solo de una pista
     ScheduledSilence.php              silencio programado de una pista
+    Mix.php, MixExport.php            mezclas guardadas y archivos exportados
     UserPreference.php                preferencias del usuario
     Chord.php                         acorde de una canción (inicio, fin, nombre, confianza, editado)
   Jobs/
@@ -30,6 +31,7 @@ config/
 lang/es/                              mensajes de Laravel en español
 resources/js/
   lib/navigation.ts                   menú lateral
+  lib/mixer/export.ts                 exportar mezcla: plan, nombre, render offline, anti-saturación, WAV
   lib/mixer/chords.ts                 acordes: tipos, búsqueda del actual, consulta del avance
   components/mixer/chord-*.tsx        fila de acordes, vista ampliada, hoja y ventana de corrección
   pages/…                             páginas React (Inertia)
@@ -53,6 +55,8 @@ docs/                                 esta documentación
 | `chords` (acordes) | `start_seconds`, `end_seconds`, `chord` (notación de guitarrista: `Bm`, `F#m7`, `N` = sin acorde), `confidence` (0–1, null si es manual) y `edited` (corregido a mano) | N a 1 con `songs` (cascada). Índice (`song_id`, `start_seconds`) |
 | `track_settings` (ajustes de pista) | `volume` (0–1), `muted` y `solo` | 1 a 1 con `tracks` (cascada). Si no existe, el modelo devuelve 1 / false / false |
 | `scheduled_silences` (silencios programados) | `start_seconds` y `end_seconds` | N a 1 con `tracks` (cascada) |
+| `mixes` (mezclas guardadas) | `name` y `settings` (JSON: `master`, `tracks[{id, volume, muted, solo}]`, `silences[{track_id, start, end}]`, `show_original`, `range`) | N a 1 con `songs` (cascada) |
+| `mix_exports` (archivos exportados) | `name` (legible), `format` (wav/flac/mp3), `file_name` (`{id}.{ext}`, lo pone el servidor), `size`, `duration`, `range_start`/`range_end`, `gain_applied` (ganancia anti-saturación) | N a 1 con `songs` (cascada); `mix_id` → `mixes` (null al borrar la mezcla) |
 | `jobs`, `failed_jobs`, `job_batches` | Cola de trabajos (driver `database`) | — |
 | `sessions`, `cache`, `password_reset_tokens` | Infraestructura de Laravel | — |
 
@@ -265,6 +269,25 @@ cambio (M, S, volumen, silencio, volumen general)
 salir de la página con cambios pendientes ─► fetch keepalive con el mismo PUT
 ```
 
+### Exportar mezcla
+
+```
+Navegador (lib/mixer/export.ts)
+  1. buildMixPlan: pistas visibles que mute/solo dejan sonar, volumen > 0,
+     silencios unidos y recortados al tramo
+  2. renderMix: OfflineAudioContext con el mismo grafo del reproductor
+     (ganancia por pista → general; silencios con setTargetAtTime y SILENCE_TAU)
+     · progreso: suspend() cada 5 % · Cancelar: AbortSignal
+  3. pico > 0,98 → ganancia común 0,97/pico (antiClipGain) → encodeWav (PCM 16 bits)
+  4. POST /songs/{id}/exports (multipart: file, format, name, range, gain_applied, mix_id)
+
+Servidor (MixExportController@store, policy de la canción)
+  · valida WAV (tipo + cabecera RIFF/WAVE), formato y nombre
+  · ffmpeg → audio/{usuario}/{canción}/exports/{id}.{mp3|flac|wav}
+    (libmp3lame 320k · flac · pcm_s16le; metadato title)
+  · responde {export} con download_url → el navegador inicia la descarga
+```
+
 ## Rutas web
 
 | Método | Ruta | Qué hace |
@@ -296,6 +319,9 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | GET | `/songs/{id}` | Mezclador (solo el dueño). Sin separar: solo la pista Original. Separada: sus pistas, más la Original oculta |
 | GET | `/songs/{id}/tracks/{pista}/audio` | Archivo de la pista, con Range |
 | PUT | `/songs/{id}/mixer` | Guardado automático del mezclador |
+| POST | `/songs/{id}/exports` | Exportar mezcla: recibe el WAV renderizado en el navegador y lo codifica con FFmpeg |
+| GET · DELETE | `/songs/{id}/exports/{archivo}/download` · `/songs/{id}/exports/{archivo}` | Descargar de nuevo («Nombre.ext») · borrar un archivo exportado |
+| POST · PATCH · DELETE | `/songs/{id}/mixes` · `/songs/{id}/mixes/{mezcla}` | Guardar, renombrar o borrar una mezcla guardada |
 | PATCH | `/songs/{id}` | Renombrar (solo el dueño) |
 | DELETE | `/songs/{id}` | Borrar canción, pistas, ajustes, silencios y archivos (solo el dueño; no mientras se procesa) |
 | GET | `/songs/{id}/tracks/{pista}/audio?download=1` | Descarga la pista como "Título - Pista.flac" |
@@ -308,8 +334,9 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 
 ## Tests
 
-- `php artisan test`: 120 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
+- `php artisan test`: 123 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
 - El job de acordes se prueba con un **motor falso en PHP** (`tests/Fixtures/fake_chords_*.php`) que imprime los mismos eventos JSON.
+- `npm run test:js`: 14 tests de vitest (`resources/js/lib/mixer/export.test.ts`) sobre qué entra en la mezcla exportada, volúmenes, silencios, nombres, anti-saturación y el WAV.
 - **Nunca** tocan la base `audio`, los archivos reales, el audio-separator ni el motor de acordes real.
 
 ## Autenticación

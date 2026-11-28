@@ -341,7 +341,30 @@ Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reini
     8. Renombrar una pista en el mezclador con doble clic («Guitarra» → «Guitarra Satriani») se mantiene al recargar; vaciar el nombre la devuelve a «Guitarra».
   - Las 3 canciones descargadas y su carpeta quedan en tu biblioteca como ejemplo; puedes borrarlas.
 
+## Fase 10 — Exportar mezcla ✅
+
+- **Botón «Exportar mezcla»** en la barra del mezclador. Genera un solo archivo con lo que se oye: mute/solo, volumen de cada pista y general, silencios programados con los mismos fundidos y la pista Original si está visible.
+  - Formato **MP3 320 kbps**, **FLAC** o **WAV**.
+  - **Canción completa o un tramo** (Desde/Hasta con botones «Ahora»).
+  - **Nombre propuesto** («copia ballad - sin batería»).
+  - **Mezclas rápidas** «Sin batería / guitarra / voz / bajo» (solo en canciones separadas).
+  - Progreso por fases (mezclando → enviando → codificando), **Cancelar** y **descarga automática**.
+- **Sin saturación:** si el pico pasa de 0,98, se baja toda la mezcla por igual. La lista indica cuántos dB se bajaron.
+- **Mezclas guardadas:** «Guardar esta mezcla» con nombre editable en línea. Cada mezcla se puede **Cargar**, **Exportar** o borrar.
+- **Archivos exportados:** se guardan en la carpeta de audios (fuera de git) para volver a descargarlos o borrarlos. Se muestra el espacio total que ocupan.
+- **Seguridad:** todo pasa por la policy de la canción. Las pistas de una mezcla tienen que ser de esa canción, y el servidor solo pasa a FFmpeg un WAV válido.
+- **Verificado:**
+  - **123 tests PHP** (3 nuevos en `MixExportTest`): codificar MP3/FLAC/WAV de verdad con FFmpeg, nombre al descargar, WAV inválido, otro usuario y validación de mezclas.
+  - **14 tests JS** (vitest, `export.test.ts`): qué pistas entran (mute, solo, Original oculta, volumen 0), volúmenes, silencios unidos y recortados al tramo, nombres, anti-saturación y el codificador WAV.
+  - **En Edge:**
+    1. «copia ballad» → «Sin batería» en MP3. Descarga automática de «copia ballad - sin batería.mp3» en 4,3 s (10,4 MB, 320 kbps, 4:20), con la batería silenciada en el mezclador.
+    2. «Jingle Bell (copia)»: silencio de 1:00 a 1:05 y tramo 0:55–1:10 en WAV («Jingle Bell (copia) - original (0.55-1.10).wav», 15 s, 48 kHz). Medido con FFmpeg: 0–5 s a −15 dB RMS, **5–10 s a −124 dB** (silencio digital) y 10–15 s a −16 dB. El silencio se respeta.
+    3. Guardar la mezcla, renombrarla «Práctica sin batería», recargar la página (sigue en la lista) y **Cargar** devuelve el mute de la batería.
+    4. Panel en tema oscuro y a 400 px de ancho, sin errores en la consola.
+  - Las canciones de prueba quedaron como estaban; las mezclas y los archivos de prueba se borraron.
+
 ## Problemas conocidos / pendientes
+- **Exportar mezcla usa la memoria del navegador:** la mezcla se renderiza en la RAM (unos 90 MB más para 4–5 minutos) y se envía como WAV. El máximo es unos 21 minutos por exportación, por el límite de subida de 250 MB. Para algo más largo, exporta por tramos.
 - **YouTube cambia a menudo.** Si las descargas empiezan a fallar con «yt-dlp parece desactualizado», pulsa «Actualizar yt-dlp» en Configuración.
 - **Las miniaturas se cargan desde los servidores de imágenes de YouTube** (no se guardan en el PC).
 - **Arrastrar con el teclado** (Espacio sobre una fila y flechas) usa la detección estándar de dnd-kit y es menos precisa que con el ratón. Para teclado es más cómodo «Mover a…».

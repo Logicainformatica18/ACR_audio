@@ -26,6 +26,13 @@ interface EngineTrack {
     src: AudioBufferSourceNode | null;
 }
 
+/**
+ * Constante de tiempo (s) de los fundidos de los silencios programados: la
+ * ganancia llega al ~95 % en 3·τ ≈ 18 ms. La usan el reproductor y la
+ * exportación, para que la mezcla exportada suene igual (sin chasquidos).
+ */
+export const SILENCE_TAU = 0.006;
+
 /** ¿Suena esta pista según mute/solo? */
 export function isAudible(t: MixTrackState, anySolo: boolean): boolean {
     return anySolo ? t.solo && !t.muted : !t.muted;
@@ -58,10 +65,11 @@ export function computeEnvelope(buf: AudioBuffer, total: number, columns = 4000)
         if (a >= buf.length) break;
         const stride = Math.max(1, Math.floor((b - a) / 256));
         let m = 0;
-        for (const d of chs) for (let j = a; j < b; j += stride) {
-            const v = Math.abs(d[j]);
-            if (v > m) m = v;
-        }
+        for (const d of chs)
+            for (let j = a; j < b; j += stride) {
+                const v = Math.abs(d[j]);
+                if (v > m) m = v;
+            }
         env[i] = m;
     }
     return env;
@@ -155,6 +163,11 @@ export class MixerEngine {
         }
     }
 
+    /** Audio decodificado de una pista (para exportar la mezcla). */
+    buffer(id: number): AudioBuffer | undefined {
+        return this.tracks.get(id)?.buffer;
+    }
+
     destroy(): void {
         window.clearTimeout(this.endTimer);
         this.stopSources();
@@ -204,8 +217,8 @@ export class MixerEngine {
             if (this.playing && base > 0) {
                 for (const r of regs) {
                     if (r.end <= p0) continue;
-                    if (r.start > p0) g.setTargetAtTime(0, t0 + (r.start - p0), 0.006);
-                    g.setTargetAtTime(base, t0 + (r.end - p0), 0.006);
+                    if (r.start > p0) g.setTargetAtTime(0, t0 + (r.start - p0), SILENCE_TAU);
+                    g.setTargetAtTime(base, t0 + (r.end - p0), SILENCE_TAU);
                 }
             }
         }
