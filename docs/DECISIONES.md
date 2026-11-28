@@ -196,3 +196,10 @@ Acuerdo entre BTC (vocabulario grande) y madmom CNN, reduciendo a tríadas: 79 %
 | R10 | **Duplicados**: mismo `original_name` y mismo `original_size` del mismo usuario → 409 `{code: "duplicate"}`. La interfaz pregunta por ese archivo (*Omitir* / *Subir de todos modos*, que reenvía con `allow_duplicate=1`) y sigue con los demás | Comparar nombre y tamaño es instantáneo y basta para un descuido como el del incidente (dos copias de la misma canción). Calcular un hash exigiría leer los 250 MB antes de subir |
 | R11 | `iniciar.bat` llama al worker con **`call php …`** | `php` de Herd es `php.bat`: sin `call`, al terminar el worker la ventana se cerraba en vez de reiniciarlo, porque un `.bat` que llama a otro sin `call` no vuelve |
 | R12 | `phpunit.xml` usa `LOG_CHANNEL=null` | Los tests del vigilante escribían avisos en el `laravel.log` real |
+
+## Servidor de desarrollo (incidente del 28/11/2026)
+
+| # | Decisión | Por qué |
+|---|---|---|
+| D1 | `vite.config.ts` → `server.watch.ignored`: `separador/`, `tools/`, `storage/`, `vendor/`, `referencias/` y `docs/` | Vite vigila todo el proyecto salvo `node_modules` y `.git`. No respeta `.gitignore`. Los dos entornos de Python (unos 64 000 archivos) lo dejaban colgado (68 000 manejadores) y el login se quedaba cargando. Ninguna de esas carpetas contiene código de la web |
+| D2 | Para uso diario, la web funciona con `npm run build`, **sin** `npm run dev`. Si queda un `public/hot` de un `npm run dev` cerrado o colgado, se borra | Mientras existe `public/hot`, Laravel carga el JavaScript desde el servidor de desarrollo. Si ese servidor no responde, la web no funciona aunque el backend esté bien |

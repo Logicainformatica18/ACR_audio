@@ -17,6 +17,14 @@ export default defineConfig({
     esbuild: {
         jsx: 'automatic',
     },
+    server: {
+        watch: {
+            // No vigilar carpetas que no son de la web: los entornos de Python
+            // (separador/ y tools/acordes/.venv tienen ~64 000 archivos) dejaban
+            // a Vite sin responder y el login se quedaba cargando.
+            ignored: ['**/separador/**', '**/tools/**', '**/storage/**', '**/vendor/**', '**/referencias/**', '**/docs/**'],
+        },
+    },
     resolve: {
         alias: {
             'ziggy-js': resolve(__dirname, 'vendor/tightenco/ziggy'),

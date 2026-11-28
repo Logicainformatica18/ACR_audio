@@ -215,6 +215,27 @@ Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reini
   4. Quedaron 0 jobs y 0 bloqueos, la carpeta `work` borrada, y la ventana volvió a arrancar su worker.
 - Las canciones de prueba se borraron después. La canción 12 queda como Error para que puedas reintentarla o borrarla, y la 13 está lista.
 
+## Incidente 28/11/2026: el login se queda cargando al pulsar "Entrar" ✅ resuelto
+
+**Diagnóstico:**
+- **Servidor sano:** `laravel.log` sin errores, MySQL responde y no hay migraciones pendientes. `POST /login` contesta en 0,65 s con `302 → /dashboard` y crea la sesión.
+- **El bloqueo estaba en el navegador:**
+  - existía `public/hot` (creado por un `npm run dev` lanzado hoy a las 11:07), así que cada página cargaba su JavaScript desde el servidor de Vite (`http://[::1]:5173`);
+  - ese servidor estaba **vivo pero colgado**: las peticiones tardaban de 10 a 30 s o no llegaban;
+  - al pulsar "Entrar", el login funcionaba, pero la página no podía cargar el código del Panel (`dashboard.tsx`) y el botón se quedaba cargando.
+- **Por qué Vite se colgó:** vigila todos los archivos del proyecto para recargar la página al cambiarlos, y eso incluía los dos entornos de Python:
+  - `separador/`: 35 118 archivos;
+  - `tools/acordes/.venv`: 29 094 archivos, añadido el 27/11 con el motor de acordes.
+
+  Con unos 64 000 archivos vigilados, el proceso de Vite llegó a 900 MB de RAM y **68 000 manejadores abiertos**, y dejó de responder. Había, además, **dos** `npm run dev` abiertos (11:07 y 11:18), los dos en ese estado.
+
+**Solución:**
+- `vite.config.ts`: `server.watch.ignored` excluye `separador/`, `tools/`, `storage/`, `vendor/`, `referencias/` y `docs/`.
+- Se borró el `public/hot` y se recompiló (`npm run build`). La web usa los archivos compilados y no depende de que `npm run dev` esté abierto.
+- **Verificado en Edge:** el login carga en 0,8 s y "Entrar" lleva al Panel en 0,35 s, sin errores.
+
+**Pendiente para ti:** cierra las dos ventanas de `npm run dev` que siguen abiertas: consumen memoria y ya no se usan. Si vuelves a necesitarlo para programar, ábrelo de nuevo: con la nueva configuración ya no vigila los entornos de Python.
+
 ## Problemas conocidos / pendientes
 
 - **No cierres las ventanas de `iniciar.bat` mientras se separa una canción.** Si se cierran, ahora la canción pasa sola a Error en unos 30–40 s y la cola sigue, pero esa separación se pierde y hay que reintentarla.
@@ -232,7 +253,7 @@ Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reini
 - **Avisos de onnxruntime en el log** (`Failed to load cublas64_13.dll`, "onnxruntime-gpu is built with CUDA 13.x"): vienen del entorno de audio-separator. No afectan, porque `htdemucs_6s` usa PyTorch con CUDA 12.8, que funciona. Solo importarían con modelos ONNX (MDX). No se toca porque está en la carpeta `separador`.
 - **Tras actualizar el código** hay que cerrar **las dos ventanas** y volver a abrir `iniciar.bat`: cada worker carga el código al arrancar.
 - **Solo hay un modelo disponible** (`htdemucs_6s.yaml`), porque es el único descargado en `SEPARATOR_MODELS_DIR`. Para usar otro (`htdemucs_ft.yaml`, `htdemucs.yaml`), descárgalo tú con audio-separator en esa carpeta; aparecerá solo en Preferencias. La app nunca descarga modelos por su cuenta.
-- **Servidor de desarrollo de Vite:** durante las pruebas había un `npm run dev` activo (lo indica `public/hot`). Para uso diario no hace falta: basta con `npm run build`. Si cierras ese servidor y la web se ve en blanco, borra el archivo `public/hot`.
+- **Servidor de desarrollo de Vite (`npm run dev`):** para uso diario no hace falta, basta con `npm run build`. Mientras existe el archivo `public/hot`, la web carga su código desde ese servidor. Si el servidor está cerrado o colgado, la web sale en blanco o el login se queda cargando: borra `public/hot` (ver el incidente del 28/11/2026).
 - **Memoria del mezclador:** Web Audio guarda las pistas decodificadas en la RAM del navegador. Son unos 90 MB por pista para una canción de 4–5 minutos, así que unos 550 MB para 6 pistas. Con canciones muy largas (más de 20 minutos) el navegador podría quedarse sin memoria. Pasaba igual con el `mezclador.html` original.
 
 - **No se pudo crear `D:\backups`.** La raíz `D:\` solo permite escribir a Administradores, y no se ejecutan comandos elevados. Siguen en su sitio:
