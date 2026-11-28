@@ -644,7 +644,7 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                                                     setEditingTrack(t.id);
                                                 }
                                             }}
-                                            aria-label={`Pista ${labels[t.id] ?? m.label}: doble clic o F2 para renombrar`}
+                                            aria-label={`Nombre de la pista ${labels[t.id] ?? m.label}: doble clic o F2 para renombrar`}
                                         >
                                             <InlineEdit
                                                 value={labels[t.id] ?? m.label}

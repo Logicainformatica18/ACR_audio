@@ -86,6 +86,17 @@ class Song extends Model
         'heartbeat_at',
         'chords_pid',
         'chords_heartbeat_at',
+        'youtube_id',
+        'source_url',
+        'channel',
+        'thumbnail_url',
+        'download_status',
+        'download_progress',
+        'download_error',
+        'download_pid',
+        'download_heartbeat_at',
+        'download_then_separate',
+        'download_then_chords',
     ];
 
     /** El log puede ser largo: solo se envía cuando se pide expresamente. */
@@ -106,6 +117,11 @@ class Song extends Model
             'heartbeat_at' => 'datetime',
             'chords_pid' => 'integer',
             'chords_heartbeat_at' => 'datetime',
+            'download_progress' => 'integer',
+            'download_pid' => 'integer',
+            'download_heartbeat_at' => 'datetime',
+            'download_then_separate' => 'boolean',
+            'download_then_chords' => 'boolean',
         ];
     }
 
@@ -259,6 +275,18 @@ class Song extends Model
     }
 
     /** ¿Se puede cancelar? (en cola o separándose) */
+    /** ¿Se está descargando de YouTube (en cola o en marcha)? Aún no tiene audio. */
+    public function isDownloading(): bool
+    {
+        return in_array($this->download_status, [self::STATUS_PENDING, self::STATUS_PROCESSING], true);
+    }
+
+    /** ¿Tiene ya su audio original? (las de YouTube, solo cuando terminó la descarga) */
+    public function hasAudio(): bool
+    {
+        return $this->download_status === null || $this->download_status === self::STATUS_READY;
+    }
+
     public function isCancelable(): bool
     {
         return in_array($this->status, [self::STATUS_PENDING, self::STATUS_PROCESSING], true);

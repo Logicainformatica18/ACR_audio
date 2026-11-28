@@ -49,6 +49,17 @@ return [
         ],
     ],
 
+    // Motor de descargas de YouTube (tools/youtube, con su propio .venv: yt-dlp + Deno).
+    'youtube' => [
+        'python' => env('YOUTUBE_PYTHON') ?: 'tools/youtube/.venv/Scripts/python.exe',
+        'script' => env('YOUTUBE_SCRIPT') ?: 'tools/youtube/youtube.py',
+        'timeout' => (int) env('YOUTUBE_TIMEOUT', 1800),
+        // Segundos sin salida nueva para dar una descarga por colgada.
+        'stall_timeout' => (int) env('YOUTUBE_STALL_TIMEOUT', 180),
+        // Máximo de videos que se pueden importar de una vez desde una lista.
+        'max_batch' => 200,
+    ],
+
     // Modelos que el usuario puede elegir en sus preferencias.
     // La clave es el nombre que se pasa a audio-separator con -m.
     'models' => [

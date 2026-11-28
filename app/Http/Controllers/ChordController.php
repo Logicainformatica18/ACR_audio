@@ -58,6 +58,9 @@ class ChordController extends Controller
         if ($song->chordsBusy()) {
             return response()->json(['message' => 'El análisis de acordes ya está en cola o en marcha.'], 409);
         }
+        if (! $song->hasAudio()) {
+            return response()->json(['message' => 'Espera a que termine la descarga de YouTube.'], 409);
+        }
 
         $song->queueChordAnalysis();
 

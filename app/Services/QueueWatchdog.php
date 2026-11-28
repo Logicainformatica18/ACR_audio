@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\AnalyzeChords;
+use App\Jobs\DownloadYoutube;
 use App\Jobs\SeparateSong;
 use App\Models\Song;
 use Illuminate\Support\Facades\Cache;
@@ -62,6 +63,14 @@ class QueueWatchdog
             ->where(fn ($q) => $q->where('chords_heartbeat_at', '<', $limit)
                 ->orWhere(fn ($q) => $q->whereNull('chords_heartbeat_at')->where('chords_started_at', '<', $limit)))
             ->get();
+        $deadDownloads = Song::where('download_status', Song::STATUS_PROCESSING)
+            ->where(fn ($q) => $q->where('download_heartbeat_at', '<', $limit)->orWhereNull('download_heartbeat_at'))
+            ->get();
+        foreach ($deadDownloads as $song) {
+            Log::warning("Vigilante: la descarga de la canción {$song->id} dejó de responder; se marca como error.");
+            self::abortDownload($song, 'La descarga se interrumpió: el proceso dejó de responder (¿se cerró la ventana «3 DESCARGAS» de iniciar.bat?). Pulsa Reintentar.');
+        }
+
         foreach ($deadChords as $song) {
             Log::warning("Vigilante: el análisis de acordes de la canción {$song->id} dejó de responder; se marca como error.");
             self::abortChords($song, 'El análisis se interrumpió: el proceso dejó de responder (¿se cerró la ventana «2 ACORDES»?). Pulsa «Volver a analizar».');
@@ -135,6 +144,28 @@ class QueueWatchdog
         Log::warning("No se pudo borrar la carpeta {$path} (algún archivo sigue en uso).");
 
         return false;
+    }
+
+    /** Detiene una descarga (si el proceso sigue vivo) y borra lo descargado a medias. */
+    public static function abortDownload(Song $song, string $error, string $status = Song::STATUS_FAILED): void
+    {
+        if ($song->download_pid) {
+            self::killTree($song->download_pid, self::pathNeedle($song));
+        }
+        $disk = Storage::disk('audio');
+        foreach ($disk->files($song->directory()) as $file) {
+            if (str_starts_with(basename($file), 'original.')) {
+                $disk->delete($file);
+            }
+        }
+        Song::whereKey($song->id)->update([
+            'download_status' => $status,
+            'download_error' => $error,
+            'download_pid' => null,
+            'download_heartbeat_at' => null,
+        ]);
+        self::forgetJobs(DownloadYoutube::class, $song->id);
+        self::releaseLock(DownloadYoutube::LOCK);
     }
 
     /** Texto que debe aparecer en la línea de comandos del proceso: la carpeta de la canción. */

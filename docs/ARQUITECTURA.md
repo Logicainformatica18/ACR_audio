@@ -176,6 +176,24 @@ Estados de los acordes (`songs.chords_status`): `null` (no solicitados), `waitin
 
 Preferencias (`user_preferences`): `chords_auto` (detectar acordes en canciones nuevas; por defecto sí) y `upload_mode` (`null` = mostrar el modal; `separate` o `upload` = recordado).
 
+## Descargas de YouTube (cola `descargas`)
+
+```
+"Pegar enlace" ─► POST /youtube/inspect ─► YoutubeEngine::parseUrl (solo hosts de YouTube; IDs con regex estrictas)
+                                          └─► youtube.py info video ID | info lista ID   (yt-dlp, sin descargar)
+modal (Separar / Solo subir, acordes, carpeta) ─► POST /youtube/import
+   └─ canción: status=none, download_status=pending, youtube_id, source_url, download_then_*  ─► DownloadYoutube
+
+iniciar.bat, ventana 3 ─► php artisan queue:work --queue=descargas   (una descarga a la vez)
+DownloadYoutube::handle()
+  youtube.py descargar ID {base}\{u}\{s}   → bestaudio → FFmpeg → original.flac   (eventos JSON en vivo)
+  latido, cancelar, cuelgue (180 s), errores claros
+  fin: pista "Original" + onda + duración → download_status=ready
+       → download_then_separate ? SeparateSong   · download_then_chords ? acordes (esperan a la separación)
+```
+
+Columnas en `songs`: `youtube_id`, `source_url`, `channel`, `thumbnail_url`, `download_status` (null = subida desde el PC), `download_progress`, `download_error`, `download_pid`, `download_heartbeat_at`, `download_then_separate` y `download_then_chords`. Motor: `tools/youtube/youtube.py` en su propio `.venv` (yt-dlp, yt-dlp-ejs y Deno). Variables: `YOUTUBE_PYTHON`, `YOUTUBE_SCRIPT`, `YOUTUBE_TIMEOUT` y `YOUTUBE_STALL_TIMEOUT`.
+
 ## Cola de acordes
 
 ```
@@ -258,6 +276,10 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | POST | `/songs/restore` | Deshacer borrados: saca canciones de la papelera (60 s) y vuelve a encolar lo que estaba en cola |
 | GET | `/songs/{id}/download` | Descarga el archivo original como «Título.ext» |
 | PATCH | `/songs/{id}/tracks/{pista}` | Renombra una pista (`label`; vacío = nombre de su tipo) |
+| POST | `/youtube/inspect` | Lee un enlace de YouTube SIN descargar: video y/o lista (título, canal, duración, miniatura y si ya lo tienes) |
+| POST | `/youtube/import` | Crea una canción por video elegido y la encola en `descargas` (`mode`, `chords` y `folder_id`, como la subida) |
+| POST | `/songs/{id}/download/cancel` · `/retry` | Cancelar (detiene el proceso real) o reintentar una descarga |
+| GET · POST | `/youtube/version` · `/youtube/update` | Versión de yt-dlp y Deno · actualizar (`youtube:actualizar`) |
 | GET/POST | `/folders` | Árbol de carpetas con contadores / crear («Nueva carpeta» por defecto) |
 | PATCH | `/folders/{id}` | Nombre, color o nota |
 | POST | `/folders/{id}/move` | Meter en otra carpeta (`parent_id`) y/o reordenar (`position`). Rechaza ciclos, un 4.º nivel y carpetas ajenas |
@@ -286,7 +308,7 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 
 ## Tests
 
-- `php artisan test`: 111 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
+- `php artisan test`: 120 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
 - El job de acordes se prueba con un **motor falso en PHP** (`tests/Fixtures/fake_chords_*.php`) que imprime los mismos eventos JSON.
 - **Nunca** tocan la base `audio`, los archivos reales, el audio-separator ni el motor de acordes real.
 

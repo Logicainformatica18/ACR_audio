@@ -5,6 +5,7 @@ import { SongRow, type RowAction } from '@/components/songs/song-row';
 import { SongStatusDetails } from '@/components/songs/song-status-details';
 import { chordsLabel, statusLabel } from '@/components/songs/status-badge';
 import { UploadDropzone } from '@/components/songs/upload-dropzone';
+import { YoutubeImport } from '@/components/songs/youtube-import';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,7 @@ import {
     Sparkles,
     Trash2,
     X,
+    Youtube,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -452,6 +454,8 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
                 e.preventDefault();
                 setConfirm({ kind: 'songs', ids: [...sel] });
             } else if (e.key === 'Enter' && single) {
+                const s = vis.find((x) => x.id === single);
+                if (s?.download_status && s.download_status !== 'ready') return; // aún sin audio
                 e.preventDefault();
                 router.visit(route('songs.show', single));
             } else if (e.key === 'Escape') {
@@ -543,8 +547,10 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
         const ids = targetIds(song);
         const many = ids.length > 1;
         const chordsMissing = !song.chords_status || song.chords_status === 'failed' || song.chords_status === 'canceled';
+        // Una canción que aún se descarga de YouTube no se puede abrir, separar, analizar ni descargar.
+        const hasAudio = !song.download_status || song.download_status === 'ready';
         const list: RowAction[] = [];
-        if (!many)
+        if (!many && hasAudio)
             list.push({
                 key: 'open',
                 label: 'Abrir en el mezclador',
@@ -559,7 +565,7 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
             icon: <FolderInput />,
             onSelect: () => setMoveTarget({ kind: 'songs', ids }),
         });
-        if (many || song.status === 'none' || song.status === 'failed' || song.status === 'canceled')
+        if (many || (hasAudio && (song.status === 'none' || song.status === 'failed' || song.status === 'canceled')))
             list.push({
                 key: 'sep',
                 label: many ? 'Separar pistas' : song.status === 'none' ? 'Separar pistas' : 'Reintentar separación',
@@ -567,7 +573,7 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
                 separated: true,
                 onSelect: () => void bulk('separate', ids),
             });
-        if (many || chordsMissing)
+        if (many || (hasAudio && chordsMissing))
             list.push({
                 key: 'chords',
                 label: 'Detectar acordes',
@@ -582,7 +588,15 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
                 icon: <Sparkles />,
                 onSelect: () => void bulk('chords', ids),
             });
-        if (!many)
+        if (!many && song.source_url)
+            list.push({
+                key: 'youtube',
+                label: 'Abrir en YouTube',
+                icon: <Youtube />,
+                separated: true,
+                onSelect: () => window.open(song.source_url!, '_blank', 'noopener'),
+            });
+        if (!many && hasAudio)
             list.push({
                 key: 'download',
                 label: 'Descargar original',
@@ -597,7 +611,7 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
             danger: true,
             shortcut: 'Supr',
             separated: many,
-            disabled: !many && (song.status === 'processing' || song.chords_status === 'processing'),
+            disabled: !many && (song.status === 'processing' || song.chords_status === 'processing' || song.download_status === 'processing'),
             onSelect: () => setConfirm({ kind: 'songs', ids }),
         });
         return list;
@@ -699,6 +713,14 @@ export default function SongsIndex({ songs, folders: initialFolders, sort, limit
                             folders={folders}
                             currentFolderId={typeof view === 'number' ? view : null}
                             onCreateFolder={(name) => createFolder(typeof view === 'number' ? view : null, name)}
+                        />
+
+                        <YoutubeImport
+                            prefs={prefs}
+                            folders={folders}
+                            currentFolderId={typeof view === 'number' ? view : null}
+                            onCreateFolder={(name) => createFolder(typeof view === 'number' ? view : null, name)}
+                            onImported={reloadSongs}
                         />
 
                         <section aria-labelledby="mis-canciones" className="space-y-3">

@@ -4,11 +4,12 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 rem ==================================================================
-rem  ACR Audio - arranca los DOS trabajadores de la cola, cada uno en
+rem  ACR Audio - arranca los TRES trabajadores de la cola, cada uno en
 rem  su propia ventana:
 rem    1) Separacion de pistas  (cola "separation", usa la GPU)
 rem    2) Acordes               (cola "acordes", en paralelo)
-rem  Uso interno: iniciar.bat separacion  /  iniciar.bat acordes
+rem    3) Descargas de YouTube  (cola "descargas", en paralelo)
+rem  Uso interno: iniciar.bat separacion / acordes / descargas
 rem
 rem  IMPORTANTE: "php" de Herd es un .bat (php.bat). Por eso se llama con
 rem  "call": sin call, al terminar php se cerraria la ventana entera en vez
@@ -17,6 +18,7 @@ rem ==================================================================
 
 if /i "%~1"=="separacion" goto separacion
 if /i "%~1"=="acordes" goto acordes
+if /i "%~1"=="descargas" goto descargas
 
 where php >nul 2>nul
 if errorlevel 1 (
@@ -27,11 +29,13 @@ if errorlevel 1 (
 
 start "ACR Audio - 1 SEPARACION de pistas (deja esta ventana abierta)" cmd /c ""%~f0" separacion"
 start "ACR Audio - 2 ACORDES (deja esta ventana abierta)" cmd /c ""%~f0" acordes"
+start "ACR Audio - 3 DESCARGAS de YouTube (deja esta ventana abierta)" cmd /c ""%~f0" descargas"
 
 echo ==================================================================
-echo  ACR Audio: se abrieron 2 ventanas. DEJALAS ABIERTAS las dos:
+echo  ACR Audio: se abrieron 3 ventanas. DEJALAS ABIERTAS las tres:
 echo    1) SEPARACION de pistas
 echo    2) ACORDES
+echo    3) DESCARGAS de YouTube
 echo  Web: http://acr_audio.test
 echo ==================================================================
 timeout /t 6 >nul
@@ -82,3 +86,25 @@ echo.
 echo El trabajador se detuvo. Reiniciando en 5 segundos... (Ctrl+C para salir)
 timeout /t 5 /nobreak >nul
 goto bucle_acordes
+
+:descargas
+title ACR Audio - 3 DESCARGAS de YouTube (deja esta ventana abierta)
+echo ==================================================================
+echo  ACR Audio - 3) DESCARGAS de YouTube
+echo ==================================================================
+echo  Descarga el audio de los videos de YouTube que agregues (en FLAC),
+echo  de uno en uno. DEJALA ABIERTA. Si la cierras, las descargas
+echo  esperan "En cola" hasta que la abras.
+echo  Para detenerla: cierra la ventana o pulsa Ctrl+C.
+echo ==================================================================
+echo.
+if not exist "tools\youtube\.venv\Scripts\python.exe" (
+    echo AVISO: falta el motor de YouTube. Ejecuta tools\youtube\instalar.bat
+    echo.
+)
+:bucle_descargas
+call php artisan queue:work --queue=descargas --sleep=2 --memory=512
+echo.
+echo El trabajador se detuvo. Reiniciando en 5 segundos... (Ctrl+C para salir)
+timeout /t 5 /nobreak >nul
+goto bucle_descargas

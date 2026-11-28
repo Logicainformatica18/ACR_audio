@@ -41,6 +41,14 @@ class SongResource extends JsonResource
             'chords_source' => $this->chords_source,
             'chords_error' => $this->chords_error,
             'can_improve_chords' => $this->canImproveChords(),
+            // YouTube (null si se subió desde el PC)
+            'youtube_id' => $this->youtube_id,
+            'source_url' => $this->source_url,
+            'channel' => $this->channel,
+            'thumbnail_url' => $this->thumbnail_url,
+            'download_status' => $this->download_status,
+            'download_progress' => (int) $this->download_progress,
+            'download_error' => $this->download_error,
         ];
     }
 }

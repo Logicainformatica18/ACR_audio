@@ -100,3 +100,8 @@ separador/**/.env
 /tools/acordes/**/*.pth
 /tools/acordes/**/__pycache__/
 /tools/acordes/**/*.py[cod]
+
+# ===== Motor de descargas: tools/youtube/ =====
+/tools/youtube/.venv/
+/tools/youtube/**/__pycache__/
+/tools/youtube/**/*.py[cod]

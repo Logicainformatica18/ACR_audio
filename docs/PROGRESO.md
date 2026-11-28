@@ -318,7 +318,32 @@ Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reini
   - Las carpetas de prueba se borraron después: tu biblioteca quedó sin carpetas, como estaba.
 - **Fallos encontrados y corregidos al probar:** soltar en la carpeta equivocada con la página desplazada (C5), página bloqueada tras borrar desde el menú contextual y foco robado al cerrar el menú (C12).
 
+## Fase 9 — Canciones desde YouTube ✅
+
+- **Motor `tools/youtube/`:** su propio `.venv` con yt-dlp 2026.11.23 + yt-dlp-ejs 0.8.0 + Deno 2.9.8 (todo desde PyPI) y `instalar.bat`. Descarga el mejor audio y lo convierte a **FLAC**.
+- **Página Canciones:** campo «Pegar enlace de YouTube».
+  - Un video muestra miniatura, título, canal y duración.
+  - Una lista se lee **sin descargar nada**, con casillas, «Seleccionar todo» y «Ninguno».
+  - Si el enlace trae video y lista, pregunta cuál quieres.
+  - Después se usa el mismo modal de subida, que con una lista propone una carpeta nueva con su nombre.
+- **Cola `descargas`** (ventana «3 DESCARGAS» de `iniciar.bat`): progreso en vivo, Cancelar, Reintentar y vigilancia de cuelgues. Al terminar, la canción sigue el flujo elegido.
+- **Duplicados** por enlace, **errores claros** en español, ícono de YouTube con el enlace original, y actualización de yt-dlp con `php artisan youtube:actualizar` o con el botón de Configuración.
+- **Verificado:**
+  - **120 tests** (9 nuevos en `YoutubeTest`): validación estricta de enlaces (incluidos intentos de inyección), lectura de videos y listas, duplicados, importación en su cola, flujo después de la descarga, errores, reintentar, cancelar, vigilante y versión.
+  - **Contra YouTube real**, en Edge y con los workers reales:
+    1. Enlace de Vimeo → «Ese enlace no es de YouTube».
+    2. *Me at the zoo* (0:19): vista previa en 2,8 s (miniatura, canal y duración). Con «Solo subir» y acordes: descargado en FLAC en unos 3 s y acordes analizados unos 6 s después. Ícono con su enlace de YouTube.
+    3. Video + lista *Backing track reggae, blues, funk* (28 videos): pregunta cuál quieres. La lista se lee en unos 4 s sin descargar nada.
+    4. Se eligieron solo 2 videos (3:07 y 3:27): el modal propuso la carpeta «Backing track reggae, blues, funk», se creó con las 2 canciones dentro y cada descarga tardó unos 13 s.
+    5. Volver a pegar el mismo video: «Ya tienes esta canción: «Me at the zoo»», con Omitir.
+    6. Los archivos son FLAC de 48 kHz estéreo. El mezclador abre la canción descargada.
+    7. Configuración muestra «yt-dlp 2026.11.23 · Deno 2.9.8» y el botón «Actualizar yt-dlp» funciona.
+    8. Renombrar una pista en el mezclador con doble clic («Guitarra» → «Guitarra Satriani») se mantiene al recargar; vaciar el nombre la devuelve a «Guitarra».
+  - Las 3 canciones descargadas y su carpeta quedan en tu biblioteca como ejemplo; puedes borrarlas.
+
 ## Problemas conocidos / pendientes
+- **YouTube cambia a menudo.** Si las descargas empiezan a fallar con «yt-dlp parece desactualizado», pulsa «Actualizar yt-dlp» en Configuración.
+- **Las miniaturas se cargan desde los servidores de imágenes de YouTube** (no se guardan en el PC).
 - **Arrastrar con el teclado** (Espacio sobre una fila y flechas) usa la detección estándar de dnd-kit y es menos precisa que con el ratón. Para teclado es más cómodo «Mover a…».
 - **El primer análisis de acordes tras encender el PC es lento**: Windows tiene que leer torch (unos 3 GB) del disco. Se midieron 34 s en una canción que después tarda 6 s.
 - **No hay sugerencias de escalas** (nunca se implementaron).

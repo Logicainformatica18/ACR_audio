@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
-import { type ChordsStatus, type SongStatus } from '@/types';
-import { AlertCircle, Ban, CheckCircle2, Clock, FileAudio, LoaderCircle, Music2 } from 'lucide-react';
+import { type ChordsStatus, type Song, type SongStatus } from '@/types';
+import { AlertCircle, Ban, CheckCircle2, Clock, Download, FileAudio, LoaderCircle, Music2 } from 'lucide-react';
 
 type Tone = 'neutral' | 'amber' | 'sky' | 'emerald' | 'red' | 'violet';
 
@@ -90,6 +90,23 @@ export function ChordsBadge({ status, chordKey, progress }: { status: ChordsStat
             spin={status === 'processing'}
             title={status === 'waiting' ? 'Se analizarán al terminar la separación' : undefined}
         >
+            {label}
+        </Pill>
+    );
+}
+
+/** Etiqueta de la descarga de YouTube (solo mientras no ha terminado bien). */
+export function DownloadBadge({ status, progress }: { status: Song['download_status']; progress: number }) {
+    if (!status || status === 'ready') return null;
+    const look = {
+        pending: ['amber', Clock, 'En cola para descargar'],
+        processing: ['sky', Download, `Descargando ${progress}%`],
+        failed: ['red', AlertCircle, 'Error al descargar'],
+        canceled: ['neutral', Ban, 'Descarga cancelada'],
+    } as const;
+    const [tone, Icon, label] = look[status];
+    return (
+        <Pill tone={tone} Icon={Icon}>
             {label}
         </Pill>
     );

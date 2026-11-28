@@ -1,5 +1,5 @@
 import { InlineEdit } from '@/components/inline-edit';
-import { ChordsBadge, StatusBadge } from '@/components/songs/status-badge';
+import { ChordsBadge, DownloadBadge, StatusBadge } from '@/components/songs/status-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { type LiveSong } from '@/types';
 import { useDraggable } from '@dnd-kit/core';
 import { Link } from '@inertiajs/react';
-import { FolderIcon, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
+import { FolderIcon, MoreHorizontal, SlidersHorizontal, Youtube } from 'lucide-react';
 import { type ReactNode } from 'react';
 
 /** Una acción del menú de la canción (se usa igual en el menú ⋯ y en el clic derecho). */
@@ -109,7 +109,22 @@ export function SongRow({
                             className="size-5"
                         />
                         <div className="min-w-0 flex-1 basis-52">
-                            <p className="truncate font-medium" data-title>
+                            <p className="flex items-center gap-1.5 truncate font-medium" data-title>
+                                {song.source_url && (
+                                    <a
+                                        href={song.source_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        draggable={false}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="shrink-0 text-red-600 hover:text-red-700 dark:text-red-500"
+                                        title={`Ver en YouTube${song.channel ? ` · ${song.channel}` : ''}`}
+                                        aria-label={`Abrir «${song.title}» en YouTube`}
+                                    >
+                                        <Youtube className="size-4" />
+                                    </a>
+                                )}
                                 <InlineEdit
                                     value={song.title}
                                     editing={editing}
@@ -131,7 +146,10 @@ export function SongRow({
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
-                            <StatusBadge status={song.status} progress={song.progress} />
+                            <DownloadBadge status={song.download_status} progress={song.download_progress} />
+                            {(!song.download_status || song.download_status === 'ready') && (
+                                <StatusBadge status={song.status} progress={song.progress} />
+                            )}
                             <ChordsBadge status={song.chords_status} chordKey={song.chords_key} progress={song.chords_progress} />
                         </div>
                         <div
@@ -139,12 +157,19 @@ export function SongRow({
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <Button size="sm" asChild>
-                                <Link href={route('songs.show', song.id)} draggable={false}>
+                            {!song.download_status || song.download_status === 'ready' ? (
+                                <Button size="sm" asChild>
+                                    <Link href={route('songs.show', song.id)} draggable={false}>
+                                        <SlidersHorizontal /> <span className="hidden sm:inline">Abrir mezclador</span>
+                                        <span className="sm:hidden">Abrir</span>
+                                    </Link>
+                                </Button>
+                            ) : (
+                                <Button size="sm" disabled title="Se podrá abrir cuando termine la descarga">
                                     <SlidersHorizontal /> <span className="hidden sm:inline">Abrir mezclador</span>
                                     <span className="sm:hidden">Abrir</span>
-                                </Link>
-                            </Button>
+                                </Button>
+                            )}
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="icon" aria-label={`Más acciones para ${song.title}`}>

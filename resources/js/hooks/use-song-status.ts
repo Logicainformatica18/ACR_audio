@@ -11,10 +11,12 @@ export const isBusy = (s: Song) =>
     s.status === 'processing' ||
     s.chords_status === 'waiting' ||
     s.chords_status === 'pending' ||
-    s.chords_status === 'processing';
+    s.chords_status === 'processing' ||
+    s.download_status === 'pending' ||
+    s.download_status === 'processing';
 
 /** Firma del estado de los dos procesos, para saber cuándo uno terminó. */
-const signature = (s: Song) => `${s.status}|${s.chords_status}`;
+const signature = (s: Song) => `${s.status}|${s.chords_status}|${s.download_status}`;
 
 /**
  * Mezcla la lista de canciones con su estado en vivo.

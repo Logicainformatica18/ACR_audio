@@ -57,6 +57,9 @@ php artisan usuario:crear --nombre="Tu nombre" --email=tu@correo.test --generar
 # 7) Motor de acordes: crea tools\acordes\.venv, instala torch con CUDA 12.8
 #    (unos 3 GB) y descarga los modelos de BTC (12 MB cada uno)
 tools\acordes\instalar.bat
+
+# 8) Motor de YouTube: crea tools\youtube\.venv con yt-dlp y Deno (unos 100 MB)
+tools\youtube\instalar.bat
 ```
 
 El comando del paso 6 muestra **una sola vez** una contraseña generada al azar. Guárdala y cámbiala luego en *Configuración → Contraseña*. Si prefieres escribirla tú, quita `--generar` y el comando te la pedirá (mínimo 12 caracteres, con letras y números).
@@ -83,9 +86,10 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 ## 3. Cómo arrancarla
 
 1. Herd debe estar abierto (icono en la bandeja del sistema).
-2. Haz doble clic en **`iniciar.bat`** (en la carpeta del proyecto). Se abren **dos ventanas negras**; **déjalas abiertas las dos** mientras uses ACR Audio:
+2. Haz doble clic en **`iniciar.bat`** (en la carpeta del proyecto). Se abren **tres ventanas negras**; **déjalas abiertas** mientras uses ACR Audio:
    - **"ACR Audio - 1 SEPARACION de pistas"**: separa las canciones con la GPU, de una en una.
    - **"ACR Audio - 2 ACORDES"**: reconoce los acordes de cada canción en cuanto termina de separarse, en paralelo a la separación de la siguiente.
+   - **"ACR Audio - 3 DESCARGAS de YouTube"**: descarga el audio de los videos de YouTube que agregues, de uno en uno.
 
    Si cierras alguna, lo pendiente se queda "En cola" sin perderse y se procesa cuando vuelvas a abrir `iniciar.bat`.
 3. Entra en **http://acr_audio.test** e inicia sesión. Marca **Recordarme** para no tener que volver a entrar aunque cierres el navegador.
@@ -139,6 +143,17 @@ Mientras se analizan puedes **Cancelar**. En el mezclador verás:
 
 Los acordes quedan guardados: la próxima vez que abras la canción salen de la base de datos al instante, sin volver a analizar.
 
+### Agregar canciones desde YouTube
+
+1. En **Canciones**, pega un enlace en **«Pegar enlace de YouTube»** (al pegarlo busca solo) o pulsa **Buscar**.
+2. **Un video:** verás su miniatura, título, canal y duración. Pulsa **Agregar**.
+3. **Una lista:** se muestran sus videos **sin descargar nada todavía**, con casillas, **Seleccionar todo** y **Ninguno**. Marca los que quieras y pulsa **Agregar N**. Los que ya tienes aparecen desmarcados con «ya la tienes».
+4. **Si el enlace trae un video y una lista**, te pregunta cuál de los dos quieres.
+5. Se abre la misma ventana de la subida: **Separar pistas** o **Solo subir**, **Detectar acordes** y la carpeta de destino. Con una lista, propone crear una carpeta con su nombre.
+6. Cada canción pasa por **En cola para descargar → Descargando N % → (separar / acordes)**. Se descarga en **FLAC**, sin pérdida. Puedes **Cancelar** o **Reintentar**.
+7. El título del video es el nombre de la canción: puedes cambiarlo con doble clic. El ícono rojo de YouTube junto al nombre abre el video original.
+8. Si las descargas fallan con «yt-dlp parece desactualizado», ve a **Configuración → Preferencias → Actualizar yt-dlp**, o ejecuta `php artisan youtube:actualizar`.
+
 ### Organizar tus canciones
 
 - **Carpetas** (barra de la izquierda; en el móvil, botón «Carpetas»):
@@ -182,6 +197,7 @@ En **Contraseña** puedes cambiar tu contraseña.
 | `npm run build` | Vuelve a compilar el frontend tras cambiar archivos de `resources/js` |
 | `php artisan migrate` | Aplica migraciones nuevas sin borrar datos |
 | `php artisan acordes:analizar` | Encola el análisis de acordes de las canciones separadas que nunca se analizaron. Con un id (`acordes:analizar 7`) analiza esa canción; con `--todas`, todas |
+| `php artisan youtube:actualizar` | Actualiza yt-dlp y Deno del motor de YouTube (YouTube cambia a menudo) |
 | `php artisan ondas:calcular` | Precalcula la forma de onda de las pistas que no la tienen (`--todas` para recalcularlas todas) |
 
 ## 6. Más documentación

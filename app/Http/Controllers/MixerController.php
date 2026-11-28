@@ -24,6 +24,10 @@ class MixerController extends Controller
     {
         $this->authorize('view', $song);
 
+        if (! $song->hasAudio()) {
+            return to_route('songs.index')->with('error', 'Esa canción todavía se está descargando de YouTube (o la descarga falló).');
+        }
+
         // Se abre siempre: si no está separada (o aún se está separando), con
         // la pista "Original"; si está separada, con sus pistas y además el
         // original (oculto por defecto, para comparar).

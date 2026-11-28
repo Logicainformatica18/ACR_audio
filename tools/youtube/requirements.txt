@@ -1,0 +1,8 @@
+# Motor de descargas de YouTube de ACR Audio (Python 3.12, entorno propio).
+# yt-dlp[default] incluye yt-dlp-ejs, necesario para YouTube.
+# deno: runtime de JavaScript que yt-dlp necesita para YouTube; paquete
+# oficial publicado en PyPI por los autores de Deno (deno.com).
+# YouTube cambia a menudo: actualízalo con "php artisan youtube:actualizar"
+# o con el botón de Configuración → Preferencias.
+yt-dlp[default]
+deno>=2.3

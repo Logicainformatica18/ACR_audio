@@ -229,8 +229,69 @@ function ChordsDetails({ song, onChanged }: { song: LiveSong; onChanged: () => v
 export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
     return (
         <>
+            <DownloadDetails song={song} onChanged={onRetried} />
             <SeparationDetails song={song} anyProcessing={anyProcessing} onRetried={onRetried} />
             <ChordsDetails song={song} onChanged={onRetried} />
         </>
+    );
+}
+
+/** Detalles de la DESCARGA de YouTube: progreso (con Cancelar) o error/cancelada (con Reintentar). */
+function DownloadDetails({ song, onChanged }: { song: LiveSong; onChanged: () => void }) {
+    const [busy, setBusy] = useState(false);
+    const status = song.download_status;
+    if (!status || status === 'ready') return null;
+
+    const post = async (name: 'songs.download.cancel' | 'songs.download.retry', ok: string) => {
+        setBusy(true);
+        try {
+            await axios.post(route(name, song.id), {}, { headers: { Accept: 'application/json' } });
+            toast.success(ok);
+            onChanged();
+        } catch (err) {
+            toast.error((err as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo completar la acción.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (status === 'failed' || status === 'canceled') {
+        return (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+                {song.download_error && (
+                    <p className={status === 'failed' ? 'text-sm text-red-700 dark:text-red-400' : 'text-muted-foreground text-sm'}>
+                        {song.download_error}
+                    </p>
+                )}
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => post('songs.download.retry', 'Descarga en cola.')}>
+                    <RotateCcw /> Reintentar descarga
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="mt-2 space-y-1">
+            {status === 'processing' && (
+                <div
+                    className="bg-muted h-1.5 overflow-hidden rounded-full"
+                    role="progressbar"
+                    aria-label={`Descargando ${song.title}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={song.download_progress}
+                >
+                    <div className="h-full bg-red-500 transition-[width] duration-500" style={{ width: `${Math.max(3, song.download_progress)}%` }} />
+                </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-muted-foreground text-xs">
+                    {status === 'pending' ? 'En cola para descargar de YouTube…' : `Descargando de YouTube en FLAC… ${song.download_progress}%`}
+                </p>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => post('songs.download.cancel', 'Se canceló la descarga.')}>
+                    <Ban /> Cancelar descarga
+                </Button>
+            </div>
+        </div>
     );
 }

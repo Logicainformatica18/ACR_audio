@@ -7,7 +7,10 @@ import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm } from '@inertiajs/react';
-import { FormEventHandler } from 'react';
+import axios, { AxiosError } from 'axios';
+import { LoaderCircle, RefreshCw } from 'lucide-react';
+import { FormEventHandler, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Preferencias', href: '/settings/preferences' }];
 
@@ -141,8 +144,65 @@ export default function Preferences({ preferences, models, defaultModel }: Props
 
                         <Button disabled={processing}>Guardar preferencias</Button>
                     </form>
+
+                    <YoutubeSection />
                 </div>
             </SettingsLayout>
         </AppLayout>
+    );
+}
+
+/** YouTube cambia a menudo: versión de yt-dlp y botón para actualizarlo (php artisan youtube:actualizar). */
+function YoutubeSection() {
+    const [version, setVersion] = useState<{ ok: boolean; yt_dlp: string | null; deno: string | null; message: string | null } | null>(null);
+    const [updating, setUpdating] = useState(false);
+    const [output, setOutput] = useState<string | null>(null);
+
+    const load = () =>
+        axios
+            .get(route('youtube.version'), { headers: { Accept: 'application/json' } })
+            .then((r) => setVersion(r.data))
+            .catch(() => setVersion({ ok: false, yt_dlp: null, deno: null, message: 'No se pudo consultar la versión.' }));
+    useEffect(() => {
+        void load();
+    }, []);
+
+    const update = async () => {
+        setUpdating(true);
+        setOutput(null);
+        try {
+            const { data } = await axios.post<{ ok: boolean; output: string }>(
+                route('youtube.update'),
+                {},
+                { headers: { Accept: 'application/json' } },
+            );
+            setOutput(data.output);
+            toast.success('yt-dlp actualizado.');
+        } catch (err) {
+            const out = (err as AxiosError<{ output?: string; message?: string }>).response?.data;
+            setOutput(out?.output ?? out?.message ?? 'No se pudo actualizar.');
+            toast.error('No se pudo actualizar yt-dlp.');
+        } finally {
+            setUpdating(false);
+            void load();
+        }
+    };
+
+    return (
+        <section className="space-y-3 border-t pt-6" aria-labelledby="yt-heading">
+            <HeadingSmall title="YouTube" description="Motor de descargas (yt-dlp). YouTube cambia a menudo: si las descargas fallan, actualízalo." />
+            <p className="text-sm">
+                {version === null
+                    ? 'Consultando versión…'
+                    : version.ok
+                      ? `yt-dlp ${version.yt_dlp} · Deno ${version.deno ?? 'no encontrado'}`
+                      : (version.message ?? 'El motor de YouTube no está instalado.')}
+            </p>
+            <Button type="button" variant="outline" onClick={update} disabled={updating}>
+                {updating ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}{' '}
+                {updating ? 'Actualizando… (hasta un minuto)' : 'Actualizar yt-dlp'}
+            </Button>
+            {output && <pre className="bg-muted max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">{output}</pre>}
+        </section>
     );
 }

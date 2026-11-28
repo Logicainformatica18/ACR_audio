@@ -68,6 +68,15 @@ export interface Song {
     chords_source: 'original' | 'stems' | null;
     chords_error: string | null;
     can_improve_chords: boolean;
+    // YouTube (null si se subió desde el PC)
+    youtube_id: string | null;
+    source_url: string | null;
+    channel: string | null;
+    thumbnail_url: string | null;
+    /** Descarga de YouTube: null (subida desde el PC), pending, processing, ready, failed o canceled. */
+    download_status: 'pending' | 'processing' | 'ready' | 'failed' | 'canceled' | null;
+    download_progress: number;
+    download_error: string | null;
 }
 
 /** Canción con datos de estado en vivo (GET /songs/status). */

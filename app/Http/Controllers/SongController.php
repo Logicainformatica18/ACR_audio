@@ -144,6 +144,7 @@ class SongController extends Controller
         $this->authorize('viewAny', Song::class);
 
         $songs = Song::ownedBy($request->user())
+            ->where(fn ($q) => $q->whereNull('download_status')->orWhere('download_status', Song::STATUS_READY)) // con audio
             ->where(fn ($q) => $q->whereNull('chords_status')
                 ->orWhereIn('chords_status', [Song::STATUS_FAILED, Song::STATUS_CANCELED]))
             ->get();
@@ -206,6 +207,9 @@ class SongController extends Controller
     {
         $this->authorize('update', $song);
 
+        if (! $song->hasAudio()) {
+            return response()->json(['message' => 'Espera a que termine la descarga de YouTube.'], 422);
+        }
         if (! in_array($song->status, [Song::STATUS_NONE, Song::STATUS_FAILED, Song::STATUS_CANCELED], true)) {
             return response()->json(['message' => $song->isSeparated()
                 ? 'Esta canción ya está separada.'
@@ -304,6 +308,9 @@ class SongController extends Controller
         if ($song->chords_status === Song::STATUS_PROCESSING) {
             return response()->json(['message' => 'No se puede borrar mientras se analizan sus acordes. Cancela el análisis primero o espera unos segundos.'], 409);
         }
+        if ($song->download_status === Song::STATUS_PROCESSING) {
+            return response()->json(['message' => 'No se puede borrar mientras se descarga. Cancela la descarga primero.'], 409);
+        }
 
         // A la papelera: se puede deshacer durante Song::UNDO_SECONDS. Después,
         // Song::purgeTrashed() borra filas (cascada) y archivos definitivamente.
@@ -376,9 +383,10 @@ class SongController extends Controller
         $skipped = 0;
         foreach ($songs as $song) {
             $ok = match ($data['action']) {
-                'separate' => in_array($song->status, [Song::STATUS_NONE, Song::STATUS_FAILED, Song::STATUS_CANCELED], true),
-                'chords' => ! $song->chordsBusy(),
-                'delete' => $song->status !== Song::STATUS_PROCESSING && $song->chords_status !== Song::STATUS_PROCESSING,
+                'separate' => $song->hasAudio() && in_array($song->status, [Song::STATUS_NONE, Song::STATUS_FAILED, Song::STATUS_CANCELED], true),
+                'chords' => $song->hasAudio() && ! $song->chordsBusy(),
+                'delete' => $song->status !== Song::STATUS_PROCESSING && $song->chords_status !== Song::STATUS_PROCESSING
+                    && $song->download_status !== Song::STATUS_PROCESSING,
             };
             if (! $ok) {
                 $skipped++;

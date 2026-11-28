@@ -5,6 +5,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FolderController;
 use App\Http\Controllers\MixerController;
 use App\Http\Controllers\SongController;
+use App\Http\Controllers\YoutubeController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/songs')->name('home');
@@ -28,6 +29,14 @@ Route::middleware('auth')->group(function () {
     Route::post('songs/restore', [SongController::class, 'restore'])->name('songs.restore');
     Route::post('songs/move', [SongController::class, 'move'])->name('songs.move');
     Route::post('songs/bulk', [SongController::class, 'bulk'])->name('songs.bulk');
+
+    // YouTube
+    Route::post('youtube/inspect', [YoutubeController::class, 'inspect'])->middleware('throttle:30,1')->name('youtube.inspect');
+    Route::post('youtube/import', [YoutubeController::class, 'import'])->name('youtube.import');
+    Route::post('songs/{song}/download/cancel', [YoutubeController::class, 'cancel'])->whereNumber('song')->name('songs.download.cancel');
+    Route::post('songs/{song}/download/retry', [YoutubeController::class, 'retry'])->whereNumber('song')->name('songs.download.retry');
+    Route::get('youtube/version', [YoutubeController::class, 'version'])->name('youtube.version');
+    Route::post('youtube/update', [YoutubeController::class, 'update'])->middleware('throttle:5,1')->name('youtube.update');
 
     // Carpetas
     Route::get('folders', [FolderController::class, 'index'])->name('folders.index');

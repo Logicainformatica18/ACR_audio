@@ -191,13 +191,15 @@ export function UploadChoiceDialog({
                         </Label>
                         <Switch id="upload-chords" checked={chords} onCheckedChange={setChords} />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Checkbox id="upload-remember" checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
-                        <Label htmlFor="upload-remember" className="cursor-pointer font-normal">
-                            Recordar y no volver a preguntar
-                        </Label>
-                    </div>
-                    {remember && (
+                    {!items && (
+                        <div className="flex items-center gap-2">
+                            <Checkbox id="upload-remember" checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
+                            <Label htmlFor="upload-remember" className="cursor-pointer font-normal">
+                                Recordar y no volver a preguntar
+                            </Label>
+                        </div>
+                    )}
+                    {remember && !items && (
                         <p className="text-muted-foreground text-xs">
                             Las próximas subidas usarán esta elección sin preguntar. Puedes volver a activar esta ventana en Configuración →
                             Preferencias.
