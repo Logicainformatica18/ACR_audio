@@ -32,7 +32,19 @@ export interface SharedData {
     [key: string]: unknown;
 }
 
-export type SongStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'canceled';
+/** Estado de la SEPARACIÓN. "none" = no solicitada (se subió con "Solo subir"). */
+export type SongStatus = 'none' | 'pending' | 'processing' | 'ready' | 'failed' | 'canceled';
+
+/** Estado de los ACORDES (independiente). null = no solicitados; "waiting" = esperan a la separación. */
+export type ChordsStatus = null | 'waiting' | 'pending' | 'processing' | 'ready' | 'failed' | 'canceled';
+
+/** Qué hacer con una subida: separar pistas o guardar el original tal cual. */
+export type UploadMode = 'separate' | 'upload';
+
+export interface UploadPrefs {
+    chords_auto: boolean;
+    upload_mode: UploadMode | null; // null = preguntar con el modal
+}
 
 export interface Song {
     id: number;
@@ -49,6 +61,12 @@ export interface Song {
     queued_at: string | null;
     started_at: string | null;
     finished_at: string | null;
+    chords_status: ChordsStatus;
+    chords_progress: number;
+    chords_key: string | null;
+    chords_source: 'original' | 'stems' | null;
+    chords_error: string | null;
+    can_improve_chords: boolean;
 }
 
 /** Canción con datos de estado en vivo (GET /songs/status). */

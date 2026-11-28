@@ -252,9 +252,14 @@ def main():
 
     emitir(tipo="progreso", pct=1)
 
-    import librosa
+    # Cargar estas librerías puede tardar bastante la primera vez tras encender
+    # el PC (torch son ~3 GB que Windows lee del disco). Se avisa del avance
+    # entre paso y paso para que Laravel no lo confunda con un proceso colgado.
     import numpy as np
     import torch
+    emitir(tipo="progreso", pct=3)
+    import librosa
+    emitir(tipo="progreso", pct=5)
 
     sys.path.insert(0, AQUI)
     from btc.modelo import CONFIG, cargar, etiquetas
@@ -264,6 +269,7 @@ def main():
     nombres_harte = etiquetas(large)
     tabla = [a_guitarrista(h) for h in nombres_harte]
     print(f"[acordes] modelo={args.modelo} dispositivo={device}", file=sys.stderr, flush=True)
+    emitir(tipo="progreso", pct=6)
 
     sr = CONFIG["song_hz"]
     audio = cargar_mezcla(args.pistas, sr)

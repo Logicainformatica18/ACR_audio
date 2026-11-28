@@ -88,15 +88,22 @@ class QueueWatchdog
         Cache::forget(SeparateSong::progressKey($song->id));
         self::forgetJobs(SeparateSong::class, $song->id);
         self::releaseLock(self::SEPARATION_LOCK);
+
+        // Acordes que esperaban por esta separación.
+        $song->releaseWaitingChords($status === Song::STATUS_CANCELED);
     }
 
-    public static function abortChords(Song $song, string $error): void
+    public static function abortChords(Song $song, string $error, string $status = Song::STATUS_FAILED): void
     {
         if ($song->chords_pid) {
             self::killTree($song->chords_pid, self::pathNeedle($song));
         }
+        if ($status === Song::STATUS_CANCELED) {
+            // Los acordes a medias de un análisis cancelado se descartan (los editados a mano no).
+            $song->chords()->where('edited', false)->delete();
+        }
         Song::whereKey($song->id)->update([
-            'chords_status' => Song::STATUS_FAILED,
+            'chords_status' => $status,
             'chords_error' => $error,
             'chords_finished_at' => now(),
             'chords_pid' => null,

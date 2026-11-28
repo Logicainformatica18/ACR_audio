@@ -77,23 +77,42 @@ class ChordEngine
      */
     public function inputFiles(Song $song): array
     {
+        return $this->inputs($song)[0];
+    }
+
+    /**
+     * Archivos de entrada y su origen: "stems" (pistas separadas, solo si la
+     * separación está lista) u "original" (canción subida con "Solo subir", o
+     * cuya separación no terminó).
+     *
+     * @return array{0: array<int, string>, 1: string}
+     */
+    public function inputs(Song $song): array
+    {
         $disk = Storage::disk('audio');
-        $tracks = $song->tracks()->get()->keyBy('stem');
         $files = [];
 
-        foreach (config('audio.chords.stems') as $stem) {
-            if (isset($tracks[$stem]) && $disk->exists($tracks[$stem]->path())) {
-                $files[] = $disk->path($tracks[$stem]->path());
+        if ($song->isSeparated()) {
+            $tracks = $song->tracks()->get()->keyBy('stem');
+            foreach (config('audio.chords.stems') as $stem) {
+                if (isset($tracks[$stem]) && $disk->exists($tracks[$stem]->path())) {
+                    $files[] = $disk->path($tracks[$stem]->path());
+                }
+            }
+            if ($files === [] && isset($tracks['instrumental']) && $disk->exists($tracks['instrumental']->path())) {
+                $files[] = $disk->path($tracks['instrumental']->path());
             }
         }
-        if ($files === [] && isset($tracks['instrumental']) && $disk->exists($tracks['instrumental']->path())) {
-            $files[] = $disk->path($tracks['instrumental']->path());
-        }
-        if ($files === [] && $disk->exists($song->originalPath())) {
-            $files[] = $disk->path($song->originalPath());
+
+        $source = 'stems';
+        if ($files === []) {
+            $source = 'original';
+            if ($disk->exists($song->originalPath())) {
+                $files[] = $disk->path($song->originalPath());
+            }
         }
 
-        return array_map(fn ($f) => str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $f), $files);
+        return [array_map(fn ($f) => str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $f), $files), $source];
     }
 
     /**

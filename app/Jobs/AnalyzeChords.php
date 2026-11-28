@@ -62,8 +62,8 @@ class AnalyzeChords implements ShouldQueue
     public function handle(ChordEngine $engine): void
     {
         $song = $this->song->fresh();
-        if (! $song || $song->status !== Song::STATUS_READY || $song->chords_status !== Song::STATUS_PENDING) {
-            return; // borrada, sin pistas o ya analizada
+        if (! $song || $song->chords_status !== Song::STATUS_PENDING) {
+            return; // borrada, cancelada o ya analizada
         }
 
         if ($problem = $engine->problem()) {
@@ -72,9 +72,10 @@ class AnalyzeChords implements ShouldQueue
             return;
         }
 
-        $files = $engine->inputFiles($song);
+        // Pistas separadas (guitarra, bajo, piano, otros) si las tiene; si no, el original.
+        [$files, $source] = $engine->inputs($song);
         if ($files === []) {
-            $this->markFailed($song, 'No se encuentran las pistas de la canción.');
+            $this->markFailed($song, 'No se encuentra el audio de la canción.');
 
             return;
         }
@@ -91,6 +92,7 @@ class AnalyzeChords implements ShouldQueue
         $song->update([
             'chords_status' => Song::STATUS_PROCESSING,
             'chords_progress' => 0,
+            'chords_source' => $source,
             'chords_model' => $engine->model().($useCpu ? ' (CPU)' : ' (GPU)'),
             'chords_key' => null,
             'chords_error' => null,
@@ -100,7 +102,7 @@ class AnalyzeChords implements ShouldQueue
         ]);
 
         $timeout = (int) config('audio.chords.timeout');
-        $stallAfter = (int) config('audio.chords.stall_timeout', 120);
+        $stallAfter = (int) config('audio.chords.stall_timeout', 300);
         $process = $engine->process($files, $timeout, $useCpu);
 
         $state = [
@@ -143,12 +145,19 @@ class AnalyzeChords implements ShouldQueue
                 if (! $running) {
                     break;
                 }
-                if ($now - $lastBeat >= 2) {
+                if ($now - $lastBeat >= 1) {
                     $lastBeat = $now;
-                    if (Song::whereKey($song->id)->update(['chords_heartbeat_at' => now()]) === 0) {
-                        $state['gone'] = true; // la canción se borró
+                    $beat = Song::whereKey($song->id)->where('chords_status', Song::STATUS_PROCESSING)
+                        ->update(['chords_heartbeat_at' => now()]);
+                    if ($beat === 0) {
+                        // Borrada o cancelada por el usuario: se detiene el proceso real.
                         $process->stop(2);
-                        break;
+                        if (Song::whereKey($song->id)->exists()) {
+                            $song->chords()->where('edited', false)->delete();
+                            Song::whereKey($song->id)->update(['chords_pid' => null, 'chords_heartbeat_at' => null]);
+                        }
+
+                        return;
                     }
                 }
                 if ($now - $lastActivity > $stallAfter) {
@@ -183,7 +192,8 @@ class AnalyzeChords implements ShouldQueue
             return;
         }
 
-        $song->update([
+        // Solo si nadie lo canceló justo al terminar.
+        Song::whereKey($song->id)->where('chords_status', Song::STATUS_PROCESSING)->update([
             'chords_status' => Song::STATUS_READY,
             'chords_progress' => 100,
             'chords_finished_at' => now(),

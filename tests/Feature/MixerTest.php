@@ -70,11 +70,19 @@ class MixerTest extends TestCase
         $this->get("/songs/{$this->song->id}/tracks/{$this->vocals->id}/audio")->assertRedirect('/login');
     }
 
-    public function test_songs_that_are_not_ready_redirect_to_the_list(): void
+    public function test_songs_without_separation_open_with_only_the_original_track(): void
     {
-        $pending = Song::factory()->for($this->owner)->create();
+        $pending = Song::factory()->for($this->owner)->create(['status' => Song::STATUS_NONE]);
+        $original = $pending->tracks()->create(['stem' => 'original', 'file_name' => 'original.mp3', 'size' => 5, 'position' => 100]);
+        // Pistas de una separación anterior no se muestran si la canción no está separada.
+        $pending->tracks()->create(['stem' => 'vocals', 'file_name' => 'vocals.flac', 'size' => 5, 'position' => 0]);
 
-        $this->actingAs($this->owner)->get("/songs/{$pending->id}")->assertRedirect('/songs');
+        $this->actingAs($this->owner)->get("/songs/{$pending->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('tracks', 1)
+                ->where('tracks.0.id', $original->id)
+                ->where('tracks.0.original', true)
+                ->where('tracks.0.label', 'Original'));
     }
 
     public function test_audio_is_served_with_range_support(): void

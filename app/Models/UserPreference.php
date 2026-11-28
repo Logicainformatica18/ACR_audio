@@ -12,17 +12,24 @@ class UserPreference extends Model
 {
     public const SORTS = ['recent', 'title', 'status'];
 
+    /** Modos de subida: separar pistas o guardar el original tal cual. */
+    public const UPLOAD_MODES = ['separate', 'upload'];
+
     protected $fillable = [
         'master_volume',
         'separation_model',
         'songs_sort',
         'keyboard_shortcuts',
+        'chords_auto',
+        'upload_mode',
     ];
 
     protected $attributes = [
         'master_volume' => 0.9,
         'songs_sort' => 'recent',
         'keyboard_shortcuts' => true,
+        'chords_auto' => true,
+        'upload_mode' => null,
     ];
 
     protected function casts(): array
@@ -30,6 +37,7 @@ class UserPreference extends Model
         return [
             'master_volume' => 'float',
             'keyboard_shortcuts' => 'boolean',
+            'chords_auto' => 'boolean',
         ];
     }
 

@@ -24,18 +24,19 @@ class MixerController extends Controller
     {
         $this->authorize('view', $song);
 
-        if ($song->status !== Song::STATUS_READY) {
-            return to_route('songs.index')->with('error', 'Esa canción todavía no tiene pistas separadas.');
-        }
-
+        // Se abre siempre: si no está separada (o aún se está separando), con
+        // la pista "Original"; si está separada, con sus pistas y además el
+        // original (oculto por defecto, para comparar).
         $song->load(['tracks.setting', 'tracks.silences']);
         $prefs = $request->user()->preferences();
+        $tracks = $song->tracks->filter(fn (Track $t) => $t->isOriginal() || $song->isSeparated());
 
         return Inertia::render('songs/mixer', [
             'song' => SongResource::make($song)->resolve(),
-            'tracks' => $song->tracks->map(fn (Track $track) => [
+            'tracks' => $tracks->map(fn (Track $track) => [
                 'id' => $track->id,
                 'stem' => $track->stem,
+                'original' => $track->isOriginal(),
                 'label' => $track->label(),
                 'color' => $track->color(),
                 'size' => $track->size,

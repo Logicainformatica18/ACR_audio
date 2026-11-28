@@ -40,6 +40,10 @@ class StoreSongRequest extends FormRequest
                 'mimetypes:'.implode(',', self::MIME_TYPES),
                 "max:{$maxKb}",
             ],
+            // "separate" = separar pistas; "upload" = solo subir. Si falta, se usa lo recordado.
+            'mode' => ['nullable', 'in:separate,upload'],
+            'chords' => ['nullable', 'boolean'],
+            'allow_duplicate' => ['nullable', 'boolean'],
         ];
     }
 

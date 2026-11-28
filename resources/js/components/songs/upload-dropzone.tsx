@@ -1,7 +1,9 @@
+import { UploadChoiceDialog, type UploadChoice } from '@/components/songs/upload-choice-dialog';
 import { Button } from '@/components/ui/button';
 import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { type Song, type UploadLimits } from '@/types';
+import { type Song, type UploadLimits, type UploadMode, type UploadPrefs } from '@/types';
+import { Link } from '@inertiajs/react';
 import axios, { AxiosError } from 'axios';
 import { CheckCircle2, Copy, LoaderCircle, Upload, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,12 +18,20 @@ interface UploadItem {
     error?: string;
     /** El usuario confirmó que quiere subirla aunque ya exista una igual. */
     allowDuplicate?: boolean;
+    /** Elegido en el modal (o recordado): separar o solo subir, y si detectar acordes. */
+    mode: UploadMode;
+    chords: boolean;
 }
 
 interface Props {
     limits: UploadLimits;
+    prefs: UploadPrefs;
+    /** Se llama si el usuario marcó "Recordar y no volver a preguntar". */
+    onRemember: (prefs: UploadPrefs) => void;
     onUploaded: (song: Song) => void;
 }
+
+const MODE_LABEL: Record<UploadMode, string> = { separate: 'Separar pistas', upload: 'Solo subir' };
 
 let nextKey = 1;
 
@@ -36,8 +46,11 @@ function uploadErrorMessage(err: unknown): string {
     return data?.message || `Error del servidor (${status}).`;
 }
 
-export function UploadDropzone({ limits, onUploaded }: Props) {
+export function UploadDropzone({ limits, prefs, onRemember, onUploaded }: Props) {
     const [items, setItems] = useState<UploadItem[]>([]);
+    // Archivos válidos esperando la elección del modal.
+    const [asking, setAsking] = useState<File[] | null>(null);
+    const [lastMode, setLastMode] = useState<UploadMode>('separate');
     const [dragging, setDragging] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const busy = useRef(false);
@@ -48,21 +61,41 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
 
     const update = (key: number, patch: Partial<UploadItem>) => setItems((list) => list.map((it) => (it.key === key ? { ...it, ...patch } : it)));
 
-    /** Revisa extensión y tamaño en el navegador antes de subir (el servidor vuelve a validar). */
+    const enqueue = (files: File[], mode: UploadMode, chords: boolean) =>
+        setItems((list) => [...list, ...files.map((file) => ({ key: nextKey++, file, state: 'waiting' as const, progress: 0, mode, chords }))]);
+
+    /**
+     * Revisa extensión y tamaño en el navegador (el servidor vuelve a validar).
+     * Los válidos se suben con la elección recordada o, si no hay, se pregunta con el modal.
+     */
     const addFiles = useCallback(
         (files: FileList | File[]) => {
-            const added: UploadItem[] = [...files].map((file) => {
+            const valid: File[] = [];
+            const rejected: UploadItem[] = [];
+            for (const file of [...files]) {
                 const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
                 let error: string | undefined;
                 if (!limits.extensions.includes(ext)) error = `Formato no permitido. Usa ${limits.extensions.join(', ').toUpperCase()}.`;
                 else if (file.size > maxBytes) error = `Pesa ${formatBytes(file.size)}; el máximo es ${limits.max_mb} MB.`;
                 else if (file.size === 0) error = 'El archivo está vacío.';
-                return { key: nextKey++, file, state: error ? 'error' : 'waiting', progress: 0, error };
-            });
-            setItems((list) => [...list, ...added]);
+                if (error) rejected.push({ key: nextKey++, file, state: 'error', progress: 0, error, mode: 'separate', chords: false });
+                else valid.push(file);
+            }
+            if (rejected.length) setItems((list) => [...list, ...rejected]);
+            if (!valid.length) return;
+            if (prefs.upload_mode) enqueue(valid, prefs.upload_mode, prefs.chords_auto);
+            else setAsking((prev) => [...(prev ?? []), ...valid]);
         },
-        [limits.extensions, limits.max_mb, maxBytes],
+        [limits.extensions, limits.max_mb, maxBytes, prefs.upload_mode, prefs.chords_auto],
     );
+
+    const choose = (choice: UploadChoice) => {
+        if (!asking) return;
+        enqueue(asking, choice.mode, choice.chords);
+        setLastMode(choice.mode);
+        setAsking(null);
+        if (choice.remember) onRemember({ upload_mode: choice.mode, chords_auto: choice.chords });
+    };
 
     // Sube los archivos de uno en uno, en el orden en que se añadieron.
     useEffect(() => {
@@ -75,6 +108,8 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
 
         const form = new FormData();
         form.append('file', next.file);
+        form.append('mode', next.mode);
+        form.append('chords', next.chords ? '1' : '0');
         if (next.allowDuplicate) form.append('allow_duplicate', '1');
 
         axios
@@ -166,6 +201,24 @@ export function UploadDropzone({ limits, onUploaded }: Props) {
                     }}
                 />
             </div>
+
+            {prefs.upload_mode && (
+                <p className="text-muted-foreground text-sm">
+                    Las subidas usan <strong className="text-foreground">{MODE_LABEL[prefs.upload_mode]}</strong>
+                    {prefs.chords_auto ? ' y detectan acordes' : ', sin detectar acordes'}, sin preguntar.{' '}
+                    <Link href={route('preferences.edit')} className="text-foreground underline underline-offset-4">
+                        Cambiar en Configuración
+                    </Link>
+                </p>
+            )}
+
+            <UploadChoiceDialog
+                files={asking}
+                defaultChords={prefs.chords_auto}
+                defaultMode={lastMode}
+                onChoose={choose}
+                onCancel={() => setAsking(null)}
+            />
 
             {items.length > 0 && (
                 <div className="space-y-2">

@@ -34,7 +34,14 @@ class Song extends Model
     /** Cancelada por el usuario (en cola o a mitad de la separación). */
     public const STATUS_CANCELED = 'canceled';
 
+    /** Separación no solicitada: se subió con "Solo subir" (solo tiene el original). */
+    public const STATUS_NONE = 'none';
+
+    /** Acordes pedidos que esperan a que termine la separación (solo en chords_status). */
+    public const CHORDS_WAITING = 'waiting';
+
     public const STATUSES = [
+        self::STATUS_NONE,
         self::STATUS_PENDING,
         self::STATUS_PROCESSING,
         self::STATUS_READY,
@@ -58,6 +65,7 @@ class Song extends Model
         'chords_status',
         'chords_progress',
         'chords_model',
+        'chords_source',
         'chords_key',
         'chords_error',
         'chords_started_at',
@@ -104,27 +112,46 @@ class Song extends Model
         return $this->hasMany(Chord::class)->orderBy('start_seconds');
     }
 
-    /** ¿El análisis de acordes está en cola o en marcha? */
+    /** ¿El análisis de acordes está esperando, en cola o en marcha? */
     public function chordsBusy(): bool
     {
-        return in_array($this->chords_status, [self::STATUS_PENDING, self::STATUS_PROCESSING], true);
+        return in_array($this->chords_status, [self::CHORDS_WAITING, self::STATUS_PENDING, self::STATUS_PROCESSING], true);
+    }
+
+    /** ¿Tiene pistas separadas listas? */
+    public function isSeparated(): bool
+    {
+        return $this->status === self::STATUS_READY;
+    }
+
+    /** ¿La separación está en cola o en marcha? */
+    public function isSeparating(): bool
+    {
+        return in_array($this->status, [self::STATUS_PENDING, self::STATUS_PROCESSING], true);
     }
 
     /**
-     * Pone la canción en la cola de acordes (cola "acordes", en paralelo a la
-     * de separación). Las correcciones hechas a mano se conservan.
+     * Pide el análisis de acordes (cola "acordes", en paralelo a la de
+     * separación). Si la canción se está separando, espera a que termine
+     * ("waiting") para analizar con las pistas separadas; si no, entra ya en la
+     * cola y usa las pistas (si las tiene) o el original. Las correcciones
+     * hechas a mano se conservan.
      */
     public function queueChordAnalysis(): void
     {
+        $waiting = $this->isSeparating();
+
         $this->update([
-            'chords_status' => self::STATUS_PENDING,
+            'chords_status' => $waiting ? self::CHORDS_WAITING : self::STATUS_PENDING,
             'chords_progress' => 0,
             'chords_error' => null,
             'chords_started_at' => null,
             'chords_finished_at' => null,
         ]);
 
-        AnalyzeChords::dispatch($this);
+        if (! $waiting) {
+            AnalyzeChords::dispatch($this);
+        }
     }
 
     /** Estado del análisis de acordes para la interfaz. */
@@ -135,8 +162,39 @@ class Song extends Model
             'progress' => (int) $this->chords_progress,
             'key' => $this->chords_key,
             'model' => $this->chords_model,
+            'source' => $this->chords_source,
             'error' => $this->chords_error,
         ];
+    }
+
+    /**
+     * La separación terminó (bien, mal o cancelada): si los acordes esperaban
+     * por ella, se lanzan ahora (con las pistas si salió bien o con el original
+     * si falló). Si el usuario canceló la separación, los acordes que esperaban
+     * también se cancelan.
+     */
+    public function releaseWaitingChords(bool $separationCanceled = false): void
+    {
+        $this->refresh();
+        if ($this->chords_status !== self::CHORDS_WAITING) {
+            return;
+        }
+        if ($separationCanceled) {
+            $this->update([
+                'chords_status' => self::STATUS_CANCELED,
+                'chords_error' => 'Se canceló la separación de la que dependían.',
+                'chords_finished_at' => now(),
+            ]);
+
+            return;
+        }
+        $this->queueChordAnalysis();
+    }
+
+    /** Acordes detectados sobre el original en una canción que ya está separada. */
+    public function canImproveChords(): bool
+    {
+        return $this->isSeparated() && $this->chords_status === self::STATUS_READY && $this->chords_source === 'original';
     }
 
     public function scopeOwnedBy(Builder $query, User $user): Builder

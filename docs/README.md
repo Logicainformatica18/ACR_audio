@@ -94,12 +94,17 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 
 1. Ve a **Canciones** en el menú.
 2. **Arrastra** una o varias canciones (MP3, WAV, FLAC, M4A u OGG, hasta 250 MB cada una) a la zona punteada, o haz clic en ella para elegirlas. Cada archivo muestra su barra de subida. Si ya tienes una canción con el mismo nombre y tamaño, te pregunta antes de subirla otra vez (*Omitir* o *Subir de todos modos*).
-3. Cada canción pasa por **En cola → Procesando (con %) → Lista**. Una canción de 4 minutos tarda unos 25 segundos con la RTX 5060 Ti.
-4. Si aparece **Error**, pulsa **Ver log** para ver el motivo o **Reintentar** para volver a intentarlo.
+3. Aparece una ventana que pregunta qué hacer con esos archivos (la elección vale para todos):
+   - **Separar pistas**: sube y separa voz, batería, bajo, guitarra, piano y otros con la GPU. Una canción de 4 minutos tarda unos 25 segundos con la RTX 5060 Ti.
+   - **Solo subir**: guarda la canción tal cual, sin separar (útil para backing tracks). Se puede separar más tarde.
+   - **Detectar acordes**: interruptor que viene marcado según tu preferencia general y que puedes cambiar solo para esta subida.
+   - **Recordar y no volver a preguntar**: las próximas subidas usan esa elección directamente. Para que vuelva a preguntar: Configuración → Preferencias → «Al subir canciones: Preguntar cada vez».
+   - Con el teclado: **Enter** elige la opción resaltada y **Esc** cancela la subida.
+4. Cada fila muestra dos etiquetas: la separación (**Separada**, **Original**, **En cola para separar**, **Separando 45 %**…) y los acordes (**Acordes · B menor**, **Acordes tras separar**, **Acordes 40 %**…). Si aparece **Error**, pulsa **Ver log** para ver el motivo o **Reintentar** para volver a intentarlo.
    - Mientras una canción está **En cola** o **Procesando** puedes pulsar **Cancelar**: se detiene la separación de verdad y se borra lo que llevaba hecho. Queda como **Cancelada**, y luego puedes **Reintentar** o borrarla.
    - Si una separación se cuelga (más de 3 minutos sin avanzar) o se cierra la ventana de `iniciar.bat` a mitad, la canción pasa sola a **Error** en menos de un minuto y la cola sigue con la siguiente.
 5. Si una canción se queda mucho rato "En cola", comprueba que la ventana de `iniciar.bat` está abierta.
-6. Cuando esté **Lista**, pulsa **Abrir mezclador**. Las pistas se cargan solas y luego puedes:
+6. Pulsa **Abrir mezclador** (cualquier canción se puede abrir). Si no está separada, verás una sola pista, **Original**, y un botón **Separar pistas**. Si está separada, verás sus pistas, y con **Mostrar la pista original para comparar** aparece también la Original. Las pistas se cargan solas y luego puedes:
    - **▶** reproducir o pausar (o la barra espaciadora), y **⏮** volver al inicio.
    - **M** para silenciar una pista y **S** para escuchar solo esa (puedes combinar varias S). También el control de volumen de cada pista y el volumen general.
    - **Clic** sobre una onda para saltar a ese momento.
@@ -110,7 +115,18 @@ Después reinicia Herd: en una terminal escribe `herd restart`, o en la ventana 
 
 ### Acordes
 
-Cuando una canción termina de separarse, sus acordes se analizan solos. Se usa la mezcla de guitarra, bajo, piano y otros, sin batería ni voz. Una canción de 5 minutos tarda **unos 7 segundos**. En el mezclador verás:
+Los acordes se detectan si así lo eliges al subir o con el interruptor **«Detectar acordes automáticamente en canciones nuevas»** (arriba en Canciones y en Preferencias):
+- **Con las pistas separadas** (guitarra, bajo, piano y otros, sin batería ni voz) si la canción se separa. En ese caso esperan a que termine la separación.
+- **Con el audio original** si elegiste «Solo subir».
+
+Una canción de 5 minutos tarda **unos 7 segundos**. La primera vez tras encender el PC puede tardar medio minuto más.
+
+Para detectarlos después:
+- **Detectar acordes** en el menú **⋯** de la canción o en el mezclador (la fila de acordes vacía muestra el botón).
+- **Detectar acordes en las que no tienen**, arriba de la lista, las pone todas en cola.
+- **Mejorar acordes con pistas separadas** aparece si se detectaron sobre el original y luego separaste la canción. Tus correcciones a mano se conservan.
+
+Mientras se analizan puedes **Cancelar**. En el mezclador verás:
 
 - **Arriba, junto al reloj**, el acorde que suena ahora (grande) y el siguiente (más pequeño).
 - **Encima de las pistas**, la fila de acordes de toda la canción, alineada con la línea de tiempo. Debajo, una **vista ampliada** de unos 20 segundos que se mueve mientras suena, con los nombres en grande.
@@ -127,11 +143,15 @@ Los acordes quedan guardados: la próxima vez que abras la canción salen de la 
 
 - **Buscar:** escribe en "Buscar canción…". No importan las tildes ni las mayúsculas.
 - **Ordenar:** más recientes, por título o por estado. Se recuerda.
+- **Filtrar:** Todas, Separadas, Solo original, Con acordes o Sin acordes.
+- **Separar pistas** de una canción subida con «Solo subir»: botón **⋯** → *Separar pistas*.
 - **Renombrar o borrar:** botón **⋯** de cada canción. Borrar pide confirmación y elimina el archivo original, las pistas y los ajustes. No se puede borrar una canción mientras se está separando: cancélala primero.
 
 ### Preferencias
 
 En **tu nombre (abajo a la izquierda) → Configuración → Preferencias** puedes elegir:
+- qué hacer al subir canciones (preguntar cada vez, separar siempre o solo subir siempre)
+- si detectar acordes automáticamente en las canciones nuevas
 - el modelo de separación (solo aparecen los descargados)
 - el orden de la lista
 - el volumen general del mezclador

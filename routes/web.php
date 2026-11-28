@@ -18,6 +18,9 @@ Route::middleware('auth')->group(function () {
     Route::get('songs/{song}/log', [SongController::class, 'log'])->whereNumber('song')->name('songs.log');
     Route::post('songs/{song}/retry', [SongController::class, 'retry'])->whereNumber('song')->name('songs.retry');
     Route::post('songs/{song}/cancel', [SongController::class, 'cancel'])->whereNumber('song')->name('songs.cancel');
+    // Separar una canción subida con "Solo subir" (misma acción que reintentar).
+    Route::post('songs/{song}/separate', [SongController::class, 'retry'])->whereNumber('song')->name('songs.separate');
+    Route::post('songs/chords/analyze-missing', [SongController::class, 'analyzeMissing'])->name('songs.chords.missing');
 
     Route::patch('songs/{song}', [SongController::class, 'update'])->whereNumber('song')->name('songs.update');
     Route::delete('songs/{song}', [SongController::class, 'destroy'])->whereNumber('song')->name('songs.destroy');
@@ -33,6 +36,7 @@ Route::middleware('auth')->group(function () {
     // Acordes
     Route::get('songs/{song}/chords', [ChordController::class, 'index'])->whereNumber('song')->name('songs.chords.index');
     Route::post('songs/{song}/chords/analyze', [ChordController::class, 'analyze'])->whereNumber('song')->name('songs.chords.analyze');
+    Route::post('songs/{song}/chords/cancel', [ChordController::class, 'cancel'])->whereNumber('song')->name('songs.chords.cancel');
     Route::patch('songs/{song}/chords/{chord}', [ChordController::class, 'update'])
         ->whereNumber(['song', 'chord'])
         ->scopeBindings()

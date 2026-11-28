@@ -26,7 +26,7 @@ function CancelButton({ song, onDone }: { song: LiveSong; onDone: () => void }) 
         setBusy(true);
         try {
             await axios.post(route('songs.cancel', song.id), {}, { headers: { Accept: 'application/json' } });
-            toast.success(`Se canceló «${song.title}».`);
+            toast.success(`Se canceló la separación de «${song.title}».`);
             setOpen(false);
             onDone();
         } catch (err) {
@@ -44,13 +44,13 @@ function CancelButton({ song, onDone }: { song: LiveSong; onDone: () => void }) 
             <ConfirmDialog
                 open={open}
                 onOpenChange={setOpen}
-                title="¿Cancelar esta canción?"
+                title="¿Cancelar la separación?"
                 description={
                     song.status === 'processing'
                         ? `Se detendrá la separación de «${song.title}» y se borrará lo que llevaba hecho. El archivo original se conserva: podrás reintentar o borrarla.`
                         : `«${song.title}» saldrá de la cola. El archivo original se conserva: podrás reintentar o borrarla.`
                 }
-                confirmLabel="Cancelar canción"
+                confirmLabel="Cancelar separación"
                 cancelLabel="Seguir"
                 destructive
                 processing={busy}
@@ -60,8 +60,8 @@ function CancelButton({ song, onDone }: { song: LiveSong; onDone: () => void }) 
     );
 }
 
-/** Información extra bajo cada canción según su estado: progreso, cola, error o cancelada. */
-export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
+/** Detalles de la SEPARACIÓN: progreso, cola, error o cancelada. */
+function SeparationDetails({ song, anyProcessing, onRetried }: Props) {
     const [log, setLog] = useState<string | null>(null);
     const [loadingLog, setLoadingLog] = useState(false);
     const [retrying, setRetrying] = useState(false);
@@ -145,7 +145,7 @@ export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
                         </Button>
                     )}
                     <Button variant="outline" size="sm" onClick={retry} disabled={retrying}>
-                        <RotateCcw /> Reintentar
+                        <RotateCcw /> Reintentar separación
                     </Button>
                 </div>
                 {log !== null && (
@@ -156,4 +156,81 @@ export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
     }
 
     return null;
+}
+
+/** Detalles de los ACORDES: esperando, en cola, analizando (con Cancelar) o error/cancelado (con Reintentar). */
+function ChordsDetails({ song, onChanged }: { song: LiveSong; onChanged: () => void }) {
+    const [busy, setBusy] = useState(false);
+    const status = song.chords_status;
+    if (!status || status === 'ready') return null;
+
+    const post = async (name: 'songs.chords.cancel' | 'songs.chords.analyze', ok: string) => {
+        setBusy(true);
+        try {
+            await axios.post(route(name, song.id), {}, { headers: { Accept: 'application/json' } });
+            toast.success(ok);
+            onChanged();
+        } catch (err) {
+            toast.error((err as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo completar la acción.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (status === 'failed' || status === 'canceled') {
+        return (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+                {song.chords_error && (
+                    <p className={status === 'failed' ? 'text-sm text-red-700 dark:text-red-400' : 'text-muted-foreground text-sm'}>
+                        Acordes: {song.chords_error}
+                    </p>
+                )}
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => post('songs.chords.analyze', 'Acordes en cola.')}>
+                    <RotateCcw /> Reintentar acordes
+                </Button>
+            </div>
+        );
+    }
+
+    const text =
+        status === 'waiting'
+            ? 'Los acordes se detectarán al terminar la separación.'
+            : status === 'pending'
+              ? 'Acordes en cola…'
+              : `Detectando acordes… ${song.chords_progress}%`;
+    return (
+        <div className="mt-2 space-y-1">
+            {status === 'processing' && (
+                <div
+                    className="bg-muted h-1.5 overflow-hidden rounded-full"
+                    role="progressbar"
+                    aria-label={`Acordes de ${song.title}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={song.chords_progress}
+                >
+                    <div
+                        className="h-full bg-violet-500 transition-[width] duration-500"
+                        style={{ width: `${Math.max(3, song.chords_progress)}%` }}
+                    />
+                </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-muted-foreground text-xs">{text}</p>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => post('songs.chords.cancel', 'Se canceló la detección de acordes.')}>
+                    <Ban /> Cancelar acordes
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+/** Información extra bajo cada canción: estado de la separación y de los acordes. */
+export function SongStatusDetails({ song, anyProcessing, onRetried }: Props) {
+    return (
+        <>
+            <SeparationDetails song={song} anyProcessing={anyProcessing} onRetried={onRetried} />
+            <ChordsDetails song={song} onChanged={onRetried} />
+        </>
+    );
 }

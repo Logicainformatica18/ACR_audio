@@ -10,6 +10,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Datos de una canción que se envían a la interfaz.
  * No incluye rutas de archivos ni el log completo.
  *
+ * "status" es el estado de la SEPARACIÓN (none = no solicitada) y
+ * "chords_status" el de los ACORDES (null = no solicitados): son independientes.
+ *
  * @mixin Song
  */
 class SongResource extends JsonResource
@@ -31,6 +34,12 @@ class SongResource extends JsonResource
             'queued_at' => $this->queued_at?->toIso8601String(),
             'started_at' => $this->started_at?->toIso8601String(),
             'finished_at' => $this->finished_at?->toIso8601String(),
+            'chords_status' => $this->chords_status,
+            'chords_progress' => (int) $this->chords_progress,
+            'chords_key' => $this->chords_key,
+            'chords_source' => $this->chords_source,
+            'chords_error' => $this->chords_error,
+            'can_improve_chords' => $this->canImproveChords(),
         ];
     }
 }

@@ -17,6 +17,8 @@ interface Props {
         songs_sort: 'recent' | 'title' | 'status';
         keyboard_shortcuts: boolean;
         master_volume: number;
+        chords_auto: boolean;
+        upload_mode: 'ask' | 'separate' | 'upload';
     };
     models: { value: string; label: string }[];
     defaultModel: string;
@@ -37,9 +39,40 @@ export default function Preferences({ preferences, models, defaultModel }: Props
             <Head title="Preferencias" />
             <SettingsLayout>
                 <div className="space-y-6">
-                    <HeadingSmall title="Preferencias" description="Cómo se separan tus canciones y cómo se comporta el mezclador" />
+                    <HeadingSmall title="Preferencias" description="Qué pasa al subir canciones, cómo se separan y cómo se comporta el mezclador" />
 
                     <form onSubmit={submit} className="space-y-6">
+                        <div className="grid gap-2">
+                            <Label htmlFor="upload_mode">Al subir canciones</Label>
+                            <select
+                                id="upload_mode"
+                                className={selectClass}
+                                value={data.upload_mode}
+                                onChange={(e) => setData('upload_mode', e.target.value as Props['preferences']['upload_mode'])}
+                            >
+                                <option value="ask">Preguntar cada vez (Separar pistas o Solo subir)</option>
+                                <option value="separate">Separar pistas siempre, sin preguntar</option>
+                                <option value="upload">Solo subir siempre, sin preguntar</option>
+                            </select>
+                            <p className="text-muted-foreground text-sm">
+                                Si marcaste «Recordar y no volver a preguntar» al subir, elige «Preguntar cada vez» para que vuelva a aparecer la
+                                ventana.
+                            </p>
+                            <InputError message={errors.upload_mode} />
+                        </div>
+
+                        <div className="flex items-start gap-3">
+                            <Checkbox id="chords_auto" checked={data.chords_auto} onCheckedChange={(v) => setData('chords_auto', v === true)} />
+                            <div className="grid gap-1">
+                                <Label htmlFor="chords_auto">Detectar acordes automáticamente en canciones nuevas</Label>
+                                <p className="text-muted-foreground text-sm">
+                                    Con las pistas separadas si eliges separar (esperando a que termine) o con el audio original si eliges «Solo
+                                    subir». También está en la página de Canciones.
+                                </p>
+                                <InputError message={errors.chords_auto} />
+                            </div>
+                        </div>
+
                         <div className="grid gap-2">
                             <Label htmlFor="separation_model">Modelo de separación</Label>
                             <select
@@ -56,7 +89,8 @@ export default function Preferences({ preferences, models, defaultModel }: Props
                                 ))}
                             </select>
                             <p className="text-muted-foreground text-sm">
-                                Se usa para las próximas canciones que subas. Solo aparecen los modelos que ya están descargados en la carpeta de modelos.
+                                Se usa para las próximas canciones que subas. Solo aparecen los modelos que ya están descargados en la carpeta de
+                                modelos.
                             </p>
                             <InputError message={errors.separation_model} />
                         </div>
@@ -99,7 +133,9 @@ export default function Preferences({ preferences, models, defaultModel }: Props
                             />
                             <div className="grid gap-1">
                                 <Label htmlFor="keyboard_shortcuts">Atajos de teclado en el mezclador</Label>
-                                <p className="text-muted-foreground text-sm">Espacio para reproducir o pausar, 1 a 9 para silenciar pistas, Inicio para volver al principio.</p>
+                                <p className="text-muted-foreground text-sm">
+                                    Espacio para reproducir o pausar, 1 a 9 para silenciar pistas, Inicio para volver al principio.
+                                </p>
                             </div>
                         </div>
 

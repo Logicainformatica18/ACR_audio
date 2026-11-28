@@ -109,12 +109,21 @@ class SongManagementTest extends TestCase
                 ->where('models.0.value', 'htdemucs_6s.yaml')
                 ->where('preferences.songs_sort', 'recent'));
 
-        $valid = ['separation_model' => 'htdemucs_6s.yaml', 'songs_sort' => 'title', 'keyboard_shortcuts' => false, 'master_volume' => 0.4];
+        $valid = ['separation_model' => 'htdemucs_6s.yaml', 'songs_sort' => 'title', 'keyboard_shortcuts' => false, 'master_volume' => 0.4,
+            'chords_auto' => false, 'upload_mode' => 'upload'];
         $this->actingAs($user)->put('/settings/preferences', $valid)->assertRedirect()->assertSessionHasNoErrors();
         $prefs = $user->fresh()->preferences();
         $this->assertSame('title', $prefs->songs_sort);
         $this->assertFalse($prefs->keyboard_shortcuts);
         $this->assertSame(0.4, $prefs->master_volume);
+        $this->assertFalse($prefs->chords_auto);
+        $this->assertSame('upload', $prefs->upload_mode);
+
+        // "Preguntar cada vez" vuelve a activar el modal de subida.
+        $this->actingAs($user)->put('/settings/preferences', [...$valid, 'upload_mode' => 'ask'])->assertSessionHasNoErrors();
+        $this->assertNull($user->fresh()->preferences()->upload_mode);
+        $this->actingAs($user)->get('/settings/preferences')
+            ->assertInertia(fn (Assert $page) => $page->where('preferences.upload_mode', 'ask')->where('preferences.chords_auto', false));
 
         // Un modelo que no está descargado no se acepta (nunca se descargaría a la carpeta del separador).
         $this->actingAs($user)->put('/settings/preferences', [...$valid, 'separation_model' => 'htdemucs_ft.yaml'])

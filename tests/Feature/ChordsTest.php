@@ -67,7 +67,7 @@ class ChordsTest extends TestCase
         (new AnalyzeChords($song))->handle(app(ChordEngine::class));
     }
 
-    public function test_successful_separation_queues_the_chord_analysis_on_its_own_queue(): void
+    public function test_separation_launches_the_chords_that_were_waiting_for_it_on_their_own_queue(): void
     {
         Queue::fake();
         $models = sys_get_temp_dir().DIRECTORY_SEPARATOR.'acr_sep_'.uniqid();
@@ -75,18 +75,30 @@ class ChordsTest extends TestCase
         file_put_contents($models.DIRECTORY_SEPARATOR.'htdemucs_6s.yaml', 'x');
         // PHP hace de audio-separator: ejecuta el "original", que crea las pistas.
         config(['audio.separator.bin' => PHP_BINARY, 'audio.separator.models_dir' => $models]);
-        $song = Song::factory()->create(['model' => 'htdemucs_6s.yaml']);
-        Storage::disk('audio')->put($song->originalPath(), file_get_contents(base_path('tests/Fixtures/fake_separator_original.php')));
+        $script = file_get_contents(base_path('tests/Fixtures/fake_separator_original.php'));
 
-        (new SeparateSong($song))->handle(app(Separator::class));
+        $waiting = Song::factory()->create(['model' => 'htdemucs_6s.yaml', 'chords_status' => Song::CHORDS_WAITING]);
+        $waiting->tracks()->create(['stem' => 'original', 'file_name' => 'original.mp3', 'size' => 1, 'position' => 100]);
+        Storage::disk('audio')->put($waiting->originalPath(), $script);
+        $noChords = Song::factory()->create(['model' => 'htdemucs_6s.yaml']);
+        Storage::disk('audio')->put($noChords->originalPath(), $script);
 
-        $song->refresh();
-        $this->assertSame(Song::STATUS_READY, $song->status);
-        $this->assertSame(6, $song->tracks()->count());
-        $this->assertSame(Song::STATUS_PENDING, $song->chords_status);
-        Queue::assertPushedOn(AnalyzeChords::QUEUE, AnalyzeChords::class, fn (AnalyzeChords $job) => $job->song->is($song));
+        (new SeparateSong($waiting))->handle(app(Separator::class));
+        (new SeparateSong($noChords))->handle(app(Separator::class));
+
+        $waiting->refresh();
+        $this->assertSame(Song::STATUS_READY, $waiting->status);
+        $this->assertSame(7, $waiting->tracks()->count(), '6 pistas + el original, que se conserva');
+        $this->assertTrue($waiting->tracks()->where('stem', 'original')->exists());
+        $this->assertSame(Song::STATUS_PENDING, $waiting->chords_status);
+        Queue::assertPushedOn(AnalyzeChords::QUEUE, AnalyzeChords::class, fn (AnalyzeChords $job) => $job->song->is($waiting));
         $this->assertSame('acordes', AnalyzeChords::QUEUE);
         $this->assertNotSame(SeparateSong::QUEUE, AnalyzeChords::QUEUE);
+
+        // Sin acordes pedidos: se separa y no se analiza nada.
+        $this->assertSame(Song::STATUS_READY, $noChords->fresh()->status);
+        $this->assertNull($noChords->fresh()->chords_status);
+        Queue::assertPushed(AnalyzeChords::class, 1);
 
         unlink($models.DIRECTORY_SEPARATOR.'htdemucs_6s.yaml');
         rmdir($models);

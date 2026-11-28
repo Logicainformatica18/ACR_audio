@@ -19,6 +19,8 @@ Route::middleware('auth')->group(function () {
     Route::get('settings/preferences', [PreferenceController::class, 'edit'])->name('preferences.edit');
     Route::put('settings/preferences', [PreferenceController::class, 'update'])->name('preferences.update');
     Route::patch('settings/preferences/sort', [PreferenceController::class, 'updateSort'])->name('preferences.sort');
+    // Interruptor de acordes y modo de subida, desde la página de Canciones o el modal.
+    Route::patch('settings/preferences/upload', [PreferenceController::class, 'updateUpload'])->name('preferences.upload');
 
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');

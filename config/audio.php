@@ -39,7 +39,7 @@ return [
         // btc-large (vocabulario grande: 7, maj7, m7, dim, sus...) o btc-majmin
         'model' => env('CHORDS_MODEL', 'btc-large'),
         'timeout' => (int) env('CHORDS_TIMEOUT', 900),
-        'stall_timeout' => (int) env('CHORDS_STALL_TIMEOUT', 120),
+        'stall_timeout' => (int) env('CHORDS_STALL_TIMEOUT', 300),
         // Pistas que se mezclan para analizar (sin batería ni voz).
         'stems' => ['guitar', 'bass', 'piano', 'other'],
         // Archivo de pesos de cada modelo (para comprobar que está descargado).
@@ -66,5 +66,7 @@ return [
         'piano' => ['label' => 'Piano', 'color' => '#45B39D'],
         'other' => ['label' => 'Otros', 'color' => '#9B7FD1'],
         'instrumental' => ['label' => 'Instrumental', 'color' => '#7FA7C9'],
+        // El archivo subido, tal cual (todas las canciones la tienen).
+        'original' => ['label' => 'Original', 'color' => '#8C96A8'],
     ],
 ];

@@ -236,7 +236,56 @@ Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reini
 
 **Pendiente para ti:** cierra las dos ventanas de `npm run dev` que siguen abiertas: consumen memoria y ya no se usan. Si vuelves a necesitarlo para programar, ábrelo de nuevo: con la nueva configuración ya no vigila los entornos de Python.
 
+## Fase 7 — Subida flexible: separar es opcional ✅
+
+**Lo que ya había antes de empezar:**
+- **Reconocedor de acordes completo:** motor BTC en `tools/acordes` con su propio entorno, cola `acordes`, tabla `chords`, análisis progresivo guardado en la BD, fila de acordes sincronizada, vista ampliada, hoja de acordes, edición y re-análisis.
+- **Sugerencias de escalas:** **no existen**; nunca se implementaron. Este encargo no pedía crearlas, así que el mezclador muestra acordes y tonalidad, pero no escalas.
+- **Subida flexible y carpetas:** no había nada empezado.
+
+**Hecho:**
+- **Modal de subida:**
+  - lista de archivos;
+  - botones grandes «Separar pistas» y «Solo subir»;
+  - interruptor «Detectar acordes», que se inicia con la preferencia general;
+  - casilla «Recordar y no volver a preguntar»;
+  - Enter elige la opción por defecto y Esc cancela; usable solo con teclado, en móvil y en modo oscuro.
+- **Interruptor general** «Detectar acordes automáticamente en canciones nuevas» en Canciones y en Preferencias. En Preferencias también está «Al subir canciones: Preguntar cada vez / Separar siempre / Solo subir siempre».
+- **Separación y acordes son procesos independientes**, cada uno con su estado, progreso en vivo, Cancelar, Reintentar y vigilancia de trabajos colgados. Los acordes pedidos durante una separación la esperan (`waiting`) y usan las pistas separadas.
+- **Acciones:**
+  - por canción (menú ⋯ y mezclador): «Separar pistas», «Detectar acordes» y «Mejorar acordes con pistas separadas» (conserva las correcciones);
+  - arriba de la lista: «Detectar acordes en las que no tienen».
+- **Lista:** etiquetas «Separada» u «Original» y «Acordes · B menor», o el estado y el progreso del proceso en marcha, más los filtros Todas, Separadas, Solo original, Con acordes y Sin acordes.
+- **Mezclador:**
+  - una canción sin separar se abre con la pista «Original», sus acordes y un botón «Separar pistas»;
+  - una separada muestra además la Original, oculta hasta pulsar «Mostrar la pista original para comparar»;
+  - sin acordes, la fila muestra «Detectar acordes».
+- **Migración:** las canciones existentes siguen separadas, con sus acordes como estaban (origen «pistas»), y ahora tienen su pista Original con su forma de onda.
+- **Verificado:**
+  - **101 tests** (12 nuevos en `FlexibleUploadTest`, y se adaptaron los que asumían que todo se separaba).
+  - **En Edge, con los workers reales**, usando copias de canciones de `D:\Pistas`:
+    1. **Solo subir sin acordes** (*Jingle Bell*):
+       - el modal muestra el archivo y el foco en «Separar pistas»;
+       - se apaga el interruptor y se elige «Solo subir»: la fila queda «Original», sin acordes;
+       - el menú ⋯ ofrece «Separar pistas | Detectar acordes»;
+       - **Detectar acordes**: «Acordes en cola» → «Acordes · E mayor»;
+       - el mezclador abre una sola pista «Original», con 50 acordes y «Detectados sobre el audio original».
+    2. **Separar pistas con acordes** (*Resident Evil Credits*), con **Enter**:
+       - «En cola para separar · Acordes tras separar» → «Separando» → «Separada · Acordes 0 %» → «Separada · Acordes · C mayor»;
+       - el mezclador abre Voz, Batería, Bajo, Guitarra, Piano y Otros, y con «Mostrar original» se añade Original, que carga y suena sincronizada.
+    3. **Esc** cierra el modal sin subir nada.
+    4. **Recordar** con «Solo subir» sin acordes:
+       - la siguiente subida no muestra el modal;
+       - aparece el aviso «Las subidas usan Solo subir, sin detectar acordes, sin preguntar. Cambiar en Configuración»;
+       - en Preferencias, «Preguntar cada vez» → el modal vuelve a aparecer.
+    5. Los filtros cuentan bien (11 = 8 separadas + 3 solo original; 8 con acordes + 3 sin acordes).
+    6. Sin errores en la consola.
+  - Las dos canciones de prueba sin acordes se borraron. *Jingle Bell (copia)* y *Resident Evil Credits (copia)* quedan como ejemplos de cada modo.
+- **Fallo encontrado y corregido:** «U2 New Yea» (subida por ti a las 11:24) tenía «Error en acordes: se colgó, no avanzó en 120 s». El motor tardó más de 120 s en cargar torch en frío y el detector de cuelgues lo cortó. Ahora el motor avisa de su progreso durante la carga y el margen es de 300 s. Se volvió a analizar: B mayor.
+
 ## Problemas conocidos / pendientes
+- **El primer análisis de acordes tras encender el PC es lento**: Windows tiene que leer torch (unos 3 GB) del disco. Se midieron 34 s en una canción que después tarda 6 s.
+- **No hay sugerencias de escalas** (nunca se implementaron).
 
 - **No cierres las ventanas de `iniciar.bat` mientras se separa una canción.** Si se cierran, ahora la canción pasa sola a Error en unos 30–40 s y la cola sigue, pero esa separación se pierde y hay que reintentarla.
 - Al subir un duplicado, la consola del navegador muestra "409 (Conflict)": es la respuesta esperada del aviso, no un error.

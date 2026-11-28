@@ -20,8 +20,26 @@ import { clamp, fmt, fmtR, parseTime } from '@/lib/mixer/time';
 import { useAutosave, type SaveStatus } from '@/lib/mixer/use-autosave';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem, type Song } from '@/types';
-import { Head, Link } from '@inertiajs/react';
-import { AlertCircle, ArrowLeft, Check, Download, ListMusic, LoaderCircle, Pause, Play, RefreshCw, SkipBack } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import axios, { AxiosError } from 'axios';
+import {
+    AlertCircle,
+    ArrowLeft,
+    Ban,
+    Check,
+    Download,
+    Eye,
+    EyeOff,
+    Layers,
+    ListMusic,
+    LoaderCircle,
+    Music2,
+    Pause,
+    Play,
+    RefreshCw,
+    SkipBack,
+    Sparkles,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface MixerTrack {
@@ -32,6 +50,7 @@ interface MixerTrack {
     size: number;
     url: string;
     peaks: string | null; // forma de onda precalculada (base64) o null
+    original: boolean; // la pista "Original" (el archivo subido tal cual)
     volume: number;
     muted: boolean;
     solo: boolean;
@@ -101,7 +120,13 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
     };
 
     // ----- Acordes -----
-    const { chords, analysis, editChord, reanalyze, pendingSince } = useChords(song.id, initialChords, initialAnalysis);
+    const { chords, analysis, editChord, reanalyze, cancel: cancelChords, pendingSince } = useChords(song.id, initialChords, initialAnalysis);
+
+    /** Detecta acordes sin pedir confirmación (no hay nada que reemplazar). */
+    const detectChords = async (ok = 'Detectando acordes. Aparecerán a medida que se detecten.') => {
+        const err = await reanalyze();
+        setMessage(err ?? ok);
+    };
     const analyzing = isAnalyzing(analysis);
     const [editingChord, setEditingChord] = useState<ChordItem | null>(null);
     const [confirmReanalyze, setConfirmReanalyze] = useState(false);
@@ -189,7 +214,54 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
     );
     const { status: saveStatus, retry: retrySave } = useAutosave(route('songs.mixer.save', song.id), payload, true);
 
-    // Descarga y decodifica todas las pistas (2 a la vez).
+    // ----- Pista "Original" -----
+    // En una canción separada va oculta (y sin descargar) hasta que se pide para comparar.
+    const hasStems = tracks.some((t) => !t.original);
+    const originalTrack = tracks.find((t) => t.original) ?? null;
+    const [showOriginal, setShowOriginal] = useState(!hasStems);
+    const [loadedIds, setLoadedIds] = useState<Set<number>>(new Set());
+    const visibleIds = useMemo(() => new Set(tracks.filter((t) => !t.original || showOriginal).map((t) => t.id)), [tracks, showOriginal]);
+
+    const toggleOriginal = async () => {
+        const show = !showOriginal;
+        setShowOriginal(show);
+        const engine = engineRef.current;
+        if (!show || !originalTrack || !engine || loadedIds.has(originalTrack.id)) return;
+        try {
+            const buf = await loadTrack(
+                engine.ctx,
+                originalTrack.url,
+                (loaded, total) =>
+                    setLoadProgress((p) => ({ ...p, [originalTrack.id]: Math.round((loaded / (total ?? originalTrack.size ?? loaded)) * 100) })),
+                new AbortController().signal,
+            );
+            if (engineRef.current !== engine) return;
+            engine.addTrack(originalTrack.id, buf);
+            if (!originalTrack.peaks) setEnvelopes((prev) => ({ ...prev, [originalTrack.id]: computeEnvelope(buf, engine.duration) }));
+            setLoadedIds((prev) => new Set(prev).add(originalTrack.id));
+            // Si está sonando, se reanuda en el mismo punto para que la nueva pista entre sincronizada.
+            if (engine.playing) engine.seek(engine.now());
+        } catch (e) {
+            setMessage('No se pudo cargar la pista original: ' + (e instanceof Error ? e.message : String(e)));
+        }
+    };
+
+    // ----- Separación -----
+    const [separating, setSeparating] = useState(false);
+    const requestSeparation = async () => {
+        setSeparating(true);
+        try {
+            await axios.post(route('songs.separate', song.id), {}, { headers: { Accept: 'application/json' } });
+            router.reload({ only: ['song'] });
+            setMessage('Separación en cola. Las pistas aparecerán aquí cuando termine (recarga la página).');
+        } catch (e) {
+            setMessage((e as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo poner en cola la separación.');
+        } finally {
+            setSeparating(false);
+        }
+    };
+
+    // Descarga y decodifica las pistas visibles (2 a la vez).
     useEffect(() => {
         const engine = new MixerEngine(preferences.master_volume);
         engineRef.current = engine;
@@ -199,7 +271,8 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
         (async () => {
             try {
                 const buffers = new Map<number, AudioBuffer>();
-                const queue = [...tracks];
+                const initial = tracks.filter((t) => !(t.original && tracks.some((x) => !x.original)));
+                const queue = [...initial];
                 const worker = async () => {
                     for (let t = queue.shift(); t; t = queue.shift()) {
                         const track = t;
@@ -217,9 +290,10 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                 await Promise.all([worker(), worker()]);
                 if (cancelled) return;
 
-                for (const t of tracks) engine.addTrack(t.id, buffers.get(t.id)!);
+                for (const t of initial) engine.addTrack(t.id, buffers.get(t.id)!);
+                setLoadedIds(new Set(initial.map((t) => t.id)));
                 // Solo se calcula la onda de las pistas que no la traen precalculada.
-                const missing = tracks.filter((t) => !t.peaks);
+                const missing = initial.filter((t) => !t.peaks);
                 if (missing.length) {
                     const env: Record<number, Float32Array> = {};
                     for (const t of missing) env[t.id] = computeEnvelope(buffers.get(t.id)!, engine.duration);
@@ -263,9 +337,12 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
     useEffect(() => {
         const engine = engineRef.current;
         if (!engine || !ready) return;
-        engine.setMix(mix, silences);
+        const heard = mix.filter((t) => loadedIds.has(t.id)).map((t) => (visibleIds.has(t.id) ? t : { ...t, muted: true, solo: false }));
+        engine.setMix(heard, silences);
         updateTimeUI(engine.now());
-    }, [mix, silences, ready, updateTimeUI]);
+    }, [mix, silences, ready, updateTimeUI, loadedIds, visibleIds]);
+
+    const shownMix = mix.filter((t) => visibleIds.has(t.id));
 
     useEffect(() => {
         engineRef.current?.setMaster(master);
@@ -334,7 +411,7 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                 e.preventDefault();
                 void togglePlay();
             } else if (/^(Digit|Numpad)[1-9]$/.test(e.code)) {
-                const t = mix[+e.code.slice(-1) - 1];
+                const t = shownMix[+e.code.slice(-1) - 1];
                 if (t) updateTrack(t.id, { muted: !t.muted });
             } else if (e.code === 'Home') {
                 e.preventDefault();
@@ -343,9 +420,12 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [preferences.keyboard_shortcuts, ready, togglePlay, seek, mix]);
+    }, [preferences.keyboard_shortcuts, ready, togglePlay, seek, shownMix]);
 
-    const totalProgress = tracks.length ? Math.round(tracks.reduce((a, t) => a + (loadProgress[t.id] ?? 0), 0) / tracks.length) : 0;
+    const initialTracks = tracks.filter((t) => !(t.original && hasStems));
+    const totalProgress = initialTracks.length
+        ? Math.round(initialTracks.reduce((a, t) => a + (loadProgress[t.id] ?? 0), 0) / initialTracks.length)
+        : 0;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -427,6 +507,8 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                         {message}
                     </p>
 
+                    <SeparationNotice status={song.status} busy={separating} onSeparate={requestSeparation} />
+
                     {loadError && (
                         <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
                             <AlertCircle className="size-4 shrink-0" /> {loadError}
@@ -462,11 +544,16 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                             <ChordInfo
                                 analysis={analysis}
                                 hasChords={chords.length > 0}
+                                canImprove={song.status === 'ready' && analysis.status === 'ready' && analysis.source === 'original'}
                                 waitingWorker={analysis.status === 'pending' && pendingSince !== null && clock - pendingSince > 8000}
                                 onReanalyze={() => setConfirmReanalyze(true)}
+                                onDetect={() => void detectChords()}
+                                onImprove={() => void detectChords('Mejorando los acordes con las pistas separadas. Tus correcciones se conservan.')}
+                                onCancel={async () => setMessage((await cancelChords()) ?? 'Se canceló la detección de acordes.')}
                             />
                             <div className="grid min-w-0 gap-1">
                                 <ChordLane
+                                    onDetect={() => void detectChords()}
                                     chords={chords}
                                     analysis={analysis}
                                     duration={duration}
@@ -496,7 +583,16 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                             </div>
                         </div>
 
-                        {mix.map((t, i) => {
+                        {hasStems && originalTrack && (
+                            <div className="flex justify-end">
+                                <Button variant="ghost" size="sm" onClick={() => void toggleOriginal()} aria-pressed={showOriginal}>
+                                    {showOriginal ? <EyeOff /> : <Eye />}{' '}
+                                    {showOriginal ? 'Ocultar la pista original' : 'Mostrar la pista original para comparar'}
+                                </Button>
+                            </div>
+                        )}
+
+                        {shownMix.map((t, i) => {
                             const m = meta.get(t.id)!;
                             const audible = isAudible(t, anySolo);
                             return (
@@ -571,7 +667,7 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                                     </div>
                                     {ready || envelopes[t.id] ? (
                                         <TrackLane
-                                            loading={ready ? null : (loadProgress[t.id] ?? 0)}
+                                            loading={ready && loadedIds.has(t.id) ? null : (loadProgress[t.id] ?? 0)}
                                             label={m.label}
                                             color={m.color}
                                             duration={duration}
@@ -666,27 +762,43 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
 function ChordInfo({
     analysis,
     hasChords,
+    canImprove,
     waitingWorker,
     onReanalyze,
+    onDetect,
+    onImprove,
+    onCancel,
 }: {
     analysis: ChordAnalysis;
     hasChords: boolean;
+    canImprove: boolean;
     waitingWorker: boolean;
     onReanalyze: () => void;
+    onDetect: () => void;
+    onImprove: () => void;
+    onCancel: () => void;
 }) {
     const busy = isAnalyzing(analysis);
+    const statusText =
+        analysis.status === 'waiting'
+            ? 'Esperando a que termine la separación…'
+            : analysis.status === 'pending'
+              ? 'En cola…'
+              : `Analizando… ${analysis.progress}%`;
     return (
         <div className="bg-card flex min-w-0 flex-col justify-center gap-0.5 rounded-md border border-l-[5px] border-l-[var(--mx-accent)] px-2.5 py-1.5 text-sm">
             <span className="text-xl leading-tight font-semibold">Acordes</span>
             {busy ? (
                 <span className="text-muted-foreground flex items-center gap-1.5" role="status">
-                    <LoaderCircle className="size-3.5 animate-spin" />
-                    {analysis.status === 'pending' ? 'En cola…' : `Analizando… ${analysis.progress}%`}
+                    <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
+                    {statusText}
                 </span>
             ) : analysis.status === 'failed' ? (
                 <span className="text-red-700 dark:text-red-400" role="alert" title={analysis.error ?? ''}>
                     Error: {analysis.error}
                 </span>
+            ) : analysis.status === 'canceled' ? (
+                <span className="text-muted-foreground">Detección cancelada.</span>
             ) : null}
             {waitingWorker && <span className="text-muted-foreground text-xs">¿Está abierta la ventana «ACORDES» de iniciar.bat?</span>}
             {analysis.key && (
@@ -694,18 +806,69 @@ function ChordInfo({
                     {busy ? 'Tonalidad (provisional)' : 'Tonalidad'}: <strong className="text-foreground font-semibold">{analysis.key}</strong>
                 </span>
             )}
-            {!busy && (
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-1 h-7 self-start px-2"
-                    onClick={onReanalyze}
-                    title={hasChords ? 'Volver a analizar (tus correcciones se conservan)' : 'Analizar acordes'}
-                >
-                    <RefreshCw /> {hasChords ? 'Volver a analizar' : 'Analizar acordes'}
-                </Button>
+            {analysis.status === 'ready' && analysis.source === 'original' && !busy && (
+                <span className="text-muted-foreground text-xs">Detectados sobre el audio original.</span>
             )}
-            <span className="text-muted-foreground mt-1 hidden text-xs md:block">Doble clic o clic derecho en un acorde para corregirlo.</span>
+            <div className="mt-1 flex flex-wrap gap-1">
+                {busy ? (
+                    <Button variant="outline" size="sm" className="h-7 px-2" onClick={onCancel}>
+                        <Ban /> Cancelar
+                    </Button>
+                ) : hasChords ? (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={onReanalyze}
+                        title="Volver a analizar (tus correcciones se conservan)"
+                    >
+                        <RefreshCw /> Volver a analizar
+                    </Button>
+                ) : (
+                    <Button variant="outline" size="sm" className="h-7 px-2" onClick={onDetect}>
+                        <Music2 /> Detectar acordes
+                    </Button>
+                )}
+                {canImprove && !busy && (
+                    <Button variant="outline" size="sm" className="h-7 px-2" onClick={onImprove} title="Tus correcciones a mano se conservan">
+                        <Sparkles /> Mejorar con pistas separadas
+                    </Button>
+                )}
+            </div>
+            {hasChords && (
+                <span className="text-muted-foreground mt-1 hidden text-xs md:block">Doble clic o clic derecho en un acorde para corregirlo.</span>
+            )}
+        </div>
+    );
+}
+
+/** Aviso sobre la separación: no separada, separándose, o con error / cancelada. */
+function SeparationNotice({ status, busy, onSeparate }: { status: Song['status']; busy: boolean; onSeparate: () => void }) {
+    if (status === 'ready') return null;
+    const box = 'bg-card flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm';
+    if (status === 'pending' || status === 'processing') {
+        return (
+            <div className={box} role="status">
+                <span className="text-muted-foreground flex items-center gap-2">
+                    <LoaderCircle className="size-4 animate-spin" />
+                    {status === 'pending' ? 'En cola para separar.' : 'Separando las pistas…'} Mientras tanto suena el original; recarga cuando
+                    termine.
+                </span>
+            </div>
+        );
+    }
+    const text =
+        status === 'none'
+            ? 'Esta canción no está separada: suena el audio original.'
+            : status === 'failed'
+              ? 'La separación falló: suena el audio original.'
+              : 'La separación se canceló: suena el audio original.';
+    return (
+        <div className={box}>
+            <span className="text-muted-foreground">{text}</span>
+            <Button size="sm" variant="outline" onClick={onSeparate} disabled={busy}>
+                <Layers /> {status === 'none' ? 'Separar pistas' : 'Reintentar separación'}
+            </Button>
         </div>
     );
 }

@@ -51,10 +51,20 @@ class Track extends Model
         return $this->hasMany(ScheduledSilence::class)->orderBy('start_seconds');
     }
 
-    /** Ruta relativa al disco "audio". */
+    /** Nombre de la pista que representa el archivo original de la canción. */
+    public const ORIGINAL = 'original';
+
+    public function isOriginal(): bool
+    {
+        return $this->stem === self::ORIGINAL;
+    }
+
+    /** Ruta relativa al disco "audio". La pista "original" apunta al archivo subido. */
     public function path(): string
     {
-        return $this->song->stemsDirectory().'/'.$this->file_name;
+        return $this->isOriginal()
+            ? $this->song->originalPath()
+            : $this->song->stemsDirectory().'/'.$this->file_name;
     }
 
     public function label(): string

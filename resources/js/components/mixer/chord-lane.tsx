@@ -14,6 +14,8 @@ interface Props {
     headRef: (el: HTMLDivElement | null) => void;
     /** Para resaltar el acorde actual sin re-renderizar React. */
     blockRef: (id: number, el: HTMLButtonElement | null) => void;
+    /** Si no hay acordes ni análisis en marcha, la fila muestra este botón en vez de quedar vacía. */
+    onDetect?: () => void;
 }
 
 const pct = (t: number, d: number) => (d ? clamp(t / d, 0, 1) * 100 : 0) + '%';
@@ -22,7 +24,7 @@ const pct = (t: number, d: number) => (d ? clamp(t / d, 0, 1) * 100 : 0) + '%';
  * Fila de acordes alineada con la línea de tiempo de las pistas: cada acorde
  * ocupa su tramo. Clic = saltar a ese momento; doble clic o clic derecho = corregir.
  */
-export function ChordLane({ chords, analysis, duration, frontier, onSeek, onEdit, headRef, blockRef }: Props) {
+export function ChordLane({ chords, analysis, duration, frontier, onSeek, onEdit, headRef, blockRef, onDetect }: Props) {
     const ref = useRef<HTMLDivElement>(null);
     const [width, setWidth] = useState(0);
 
@@ -86,6 +88,21 @@ export function ChordLane({ chords, analysis, duration, frontier, onSeek, onEdit
                     <span className="bg-background/80 rounded px-2 py-0.5 whitespace-nowrap">
                         {analysis.status === 'pending' ? 'En cola…' : `Analizando… ${analysis.progress}%`}
                     </span>
+                </div>
+            )}
+
+            {chords.length === 0 && frontier === null && onDetect && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center gap-3 px-2 text-sm">
+                    <span className="text-muted-foreground hidden sm:inline">
+                        {analysis.status === 'failed' ? 'No se pudieron detectar los acordes.' : 'Esta canción aún no tiene acordes.'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={onDetect}
+                        className="bg-background hover:bg-muted focus-visible:ring-ring rounded-md border px-3 py-1 font-medium focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                        Detectar acordes
+                    </button>
                 </div>
             )}
 

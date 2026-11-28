@@ -48,7 +48,7 @@ docs/                                 esta documentación
 | `users` | Usuarios (`name`, `email`, `password`, `remember_token`) | — |
 | `user_preferences` | Preferencias: `master_volume` (volumen general del mezclador), `separation_model` (null = el del `.env`), `songs_sort` (orden de la lista: `recent`, `title`, `status`) y `keyboard_shortcuts` | 1 a 1 con `users` (`user_id` único, borrado en cascada) |
 | `songs` (canciones) | `title`, `original_name` (solo informativo), `original_ext`, `original_size`, `duration`, `status`, `model`, `log`, `error`, `queued_at`/`started_at`/`finished_at`. **Análisis de acordes:** `chords_status` (null = nunca analizada, `pending`, `processing`, `ready`, `failed`), `chords_progress` (0–100), `chords_model`, `chords_key` (tonalidad, "B menor"), `chords_error`, `chords_started_at`/`chords_finished_at` | N a 1 con `users` (cascada) |
-| `tracks` (pistas) | `stem` (vocals, drums…), `file_name` (generado por el servidor), `size`, `position` y `peaks` (forma de onda: 4000 bytes 0–255 en base64) | N a 1 con `songs` (cascada). Único por (`song_id`, `stem`) |
+| `tracks` (pistas) | `stem` (vocals, drums… y **`original`**, que apunta al archivo subido), `file_name` (generado por el servidor), `size`, `position` (la original va en 100) y `peaks` (forma de onda: 4000 bytes 0–255 en base64) | N a 1 con `songs` (cascada). Único por (`song_id`, `stem`) |
 | `chords` (acordes) | `start_seconds`, `end_seconds`, `chord` (notación de guitarrista: `Bm`, `F#m7`, `N` = sin acorde), `confidence` (0–1, null si es manual) y `edited` (corregido a mano) | N a 1 con `songs` (cascada). Índice (`song_id`, `start_seconds`) |
 | `track_settings` (ajustes de pista) | `volume` (0–1), `muted` y `solo` | 1 a 1 con `tracks` (cascada). Si no existe, el modelo devuelve 1 / false / false |
 | `scheduled_silences` (silencios programados) | `start_seconds` y `end_seconds` | N a 1 con `tracks` (cascada) |
@@ -61,6 +61,7 @@ Al borrar un usuario se borran en cascada sus canciones, pistas, ajustes y silen
 
 | Valor | En pantalla | Significado |
 |---|---|---|
+| `none` | Original | Subida con «Solo subir»: separación no solicitada (se puede pedir después) |
 | `pending` | En cola | Subida y esperando al worker |
 | `processing` | Procesando | audio-separator está trabajando |
 | `ready` | Lista | Pistas disponibles en el mezclador |
@@ -155,6 +156,25 @@ La página Canciones llama a `GET /songs/status` cada 2,5 s **solo** mientras al
 
 Cuando una termina (Lista o Error), la lista se recarga.
 
+## Subida flexible: dos procesos independientes
+
+```
+POST /songs (mode, chords)
+  ├─ siempre: guarda original.{ext} + pista "original" (onda con ffmpeg)
+  ├─ mode=separate → status=pending  → SeparateSong (cola "separation")
+  │                   chords=1 → chords_status=waiting (sin job: espera a la separación)
+  └─ mode=upload   → status=none     (duración con ffprobe)
+                      chords=1 → chords_status=pending → AnalyzeChords (con el ORIGINAL)
+
+SeparateSong termina:  bien → acordes "waiting" → pending + AnalyzeChords (con las PISTAS)
+                       falla → acordes "waiting" → se analizan con el original
+                       cancelada → acordes "waiting" → canceled
+```
+
+Estados de los acordes (`songs.chords_status`): `null` (no solicitados), `waiting`, `pending`, `processing`, `ready`, `failed` y `canceled`. `chords_source` indica si se detectaron sobre `original` o `stems`. Si la canción está separada y sus acordes vienen del original, se ofrece «Mejorar acordes con pistas separadas».
+
+Preferencias (`user_preferences`): `chords_auto` (detectar acordes en canciones nuevas; por defecto sí) y `upload_mode` (`null` = mostrar el modal; `separate` o `upload` = recordado).
+
 ## Cola de acordes
 
 ```
@@ -231,12 +251,16 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/songs` | Lista y zona de subida |
-| POST | `/songs` | Sube un archivo (JSON) y lo encola |
+| POST | `/songs` | Sube un archivo. `mode` = `separate` (la encola para separar) o `upload` (solo la guarda); `chords` = 0/1. Si faltan, usa las preferencias |
+| POST | `/songs/{id}/separate` | Separa una canción subida con «Solo subir» (o reintenta una separación fallida o cancelada) |
+| POST | `/songs/chords/analyze-missing` | Encola los acordes de todas las canciones del usuario que no los tienen |
+| POST | `/songs/{id}/chords/cancel` | Cancela el análisis de acordes (detiene el motor real) |
+| PATCH | `/settings/preferences/upload` | Interruptor general de acordes (`chords_auto`) y modo de subida recordado (`upload_mode`, null = preguntar) |
 | GET | `/songs/status` | Estado en vivo de las canciones del usuario |
 | GET | `/songs/{id}/log` | Log de audio-separator (solo el dueño) |
 | POST | `/songs/{id}/retry` | Vuelve a encolar una canción con error o cancelada (solo el dueño) |
 | POST | `/songs/{id}/cancel` | Cancela una canción en cola o separándose: detiene el proceso real y borra lo hecho (solo el dueño) |
-| GET | `/songs/{id}` | Mezclador (solo el dueño y solo si está lista) |
+| GET | `/songs/{id}` | Mezclador (solo el dueño). Sin separar: solo la pista Original. Separada: sus pistas, más la Original oculta |
 | GET | `/songs/{id}/tracks/{pista}/audio` | Archivo de la pista, con Range |
 | PUT | `/songs/{id}/mixer` | Guardado automático del mezclador |
 | PATCH | `/songs/{id}` | Renombrar (solo el dueño) |
@@ -251,7 +275,7 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 
 ## Tests
 
-- `php artisan test`: 89 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
+- `php artisan test`: 101 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
 - El job de acordes se prueba con un **motor falso en PHP** (`tests/Fixtures/fake_chords_*.php`) que imprime los mismos eventos JSON.
 - **Nunca** tocan la base `audio`, los archivos reales, el audio-separator ni el motor de acordes real.
 

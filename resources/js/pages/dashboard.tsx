@@ -9,7 +9,7 @@ import { Music, SlidersHorizontal, Upload } from 'lucide-react';
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Panel', href: '/dashboard' }];
 
 interface Props {
-    stats: { total: number; pending: number; processing: number; ready: number; failed: number; bytes: number; minutes: number };
+    stats: { total: number; pending: number; processing: number; ready: number; failed: number; chords: number; bytes: number; minutes: number };
     recent: Song[];
 }
 
@@ -18,10 +18,11 @@ export default function Dashboard({ stats, recent }: Props) {
 
     const cards = [
         { label: 'Canciones', value: stats.total },
-        { label: 'Listas', value: stats.ready },
+        { label: 'Separadas', value: stats.ready },
+        { label: 'Con acordes', value: stats.chords },
         { label: 'En cola o procesando', value: stats.pending + stats.processing },
         { label: 'Con error', value: stats.failed },
-        { label: 'Minutos separados', value: stats.minutes.toLocaleString('es') },
+        { label: 'Minutos de música', value: stats.minutes.toLocaleString('es') },
         { label: 'Espacio en disco', value: formatBytes(stats.bytes) },
     ];
 
@@ -64,15 +65,13 @@ export default function Dashboard({ stats, recent }: Props) {
                     <SongList
                         songs={recent}
                         emptyMessage="Todavía no hay canciones. Ve a Canciones y arrastra tu primer archivo."
-                        actions={(song) =>
-                            song.status === 'ready' && (
-                                <Button size="sm" variant="outline" asChild>
-                                    <Link href={route('songs.show', song.id)}>
-                                        <SlidersHorizontal /> Mezclador
-                                    </Link>
-                                </Button>
-                            )
-                        }
+                        actions={(song) => (
+                            <Button size="sm" variant="outline" asChild>
+                                <Link href={route('songs.show', song.id)}>
+                                    <SlidersHorizontal /> Mezclador
+                                </Link>
+                            </Button>
+                        )}
                     />
                 </section>
 

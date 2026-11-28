@@ -10,19 +10,22 @@ export interface ChordItem {
     edited: boolean; // corregido a mano
 }
 
-export type AnalysisStatus = 'pending' | 'processing' | 'ready' | 'failed' | null;
+/** null = no solicitados; "waiting" = esperan a que termine la separación. */
+export type AnalysisStatus = 'waiting' | 'pending' | 'processing' | 'ready' | 'failed' | 'canceled' | null;
 
 export interface ChordAnalysis {
     status: AnalysisStatus;
     progress: number;
     key: string | null;
     model: string | null;
+    /** Sobre qué se detectaron: pistas separadas u original. */
+    source: 'original' | 'stems' | null;
     error: string | null;
 }
 
 const POLL_MS = 2000;
 
-export const isAnalyzing = (a: ChordAnalysis) => a.status === 'pending' || a.status === 'processing';
+export const isAnalyzing = (a: ChordAnalysis) => a.status === 'waiting' || a.status === 'pending' || a.status === 'processing';
 
 /** "N" se muestra como un guion: no suena ningún acorde. */
 export const chordLabel = (c: string) => (c === 'N' ? '—' : c);
@@ -137,5 +140,17 @@ export function useChords(songId: number, initialChords: ChordItem[], initialAna
         }
     }, [songId]);
 
-    return { chords, analysis, editChord, reanalyze, pendingSince };
+    /** Cancela el análisis en curso (detiene el proceso real). */
+    const cancel = useCallback(async (): Promise<string | null> => {
+        try {
+            const { data } = await axios.post<{ analysis: ChordAnalysis; chords: ChordItem[] }>(route('songs.chords.cancel', songId));
+            setAnalysis(data.analysis);
+            setChords(data.chords);
+            return null;
+        } catch (e) {
+            return errorMessage(e, 'No se pudo cancelar.');
+        }
+    }, [songId]);
+
+    return { chords, analysis, editChord, reanalyze, cancel, pendingSince };
 }

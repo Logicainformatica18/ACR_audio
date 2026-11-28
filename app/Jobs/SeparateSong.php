@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Song;
+use App\Models\Track;
 use App\Services\QueueWatchdog;
 use App\Services\Separator;
 use App\Services\Waveform;
@@ -217,7 +218,8 @@ class SeparateSong implements ShouldQueue
         uksort($found, fn ($a, $b) => array_search($a, $order) <=> array_search($b, $order));
 
         DB::transaction(function () use ($song, $disk, $found, $order) {
-            $song->tracks()->delete();
+            // Se reemplazan las pistas separadas; la pista "Original" se conserva.
+            $song->tracks()->where('stem', '!=', Track::ORIGINAL)->delete();
             $disk->deleteDirectory($song->stemsDirectory());
             $disk->makeDirectory($song->stemsDirectory());
 
@@ -240,6 +242,9 @@ class SeparateSong implements ShouldQueue
         // Forma de onda de cada pista, para que el mezclador no la calcule cada vez.
         // Si falla no pasa nada: el mezclador la calcula como antes.
         foreach ($song->tracks()->get() as $track) {
+            if ($track->isOriginal() && $track->peaks) {
+                continue; // la del original se calculó al subir
+            }
             Song::whereKey($song->id)->update(['heartbeat_at' => now()]);
             $track->update(['peaks' => Waveform::compute($disk->path($track->path()))]);
         }
@@ -258,8 +263,9 @@ class SeparateSong implements ShouldQueue
         }
         $song->refresh();
 
-        // Acordes: a su propia cola ("acordes"), que avanza en paralelo.
-        $song->queueChordAnalysis();
+        // Acordes: solo si se pidieron (esperaban a que terminara la separación).
+        // Van a su propia cola ("acordes"), que avanza en paralelo.
+        $song->releaseWaitingChords();
     }
 
     /** Se llama si el trabajo lanza una excepción no controlada o supera el tiempo. */
@@ -284,6 +290,9 @@ class SeparateSong implements ShouldQueue
         ]);
         $song->refresh();
         Cache::forget(self::progressKey($song->id));
+
+        // Si los acordes esperaban por esta separación, se analizan con el original.
+        $song->releaseWaitingChords();
     }
 
     /** Quita colores de consola, repintados de las barras de progreso (\r) y bytes inválidos. */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AnalyzeChords;
 use App\Models\Chord;
 use App\Models\Song;
 use App\Services\QueueWatchdog;
@@ -44,19 +45,53 @@ class ChordController extends Controller
         return response()->json(['chord' => $chord->toClient()]);
     }
 
-    /** Vuelve a analizar (los acordes editados a mano se conservan). */
+    /**
+     * Detecta (o vuelve a detectar) los acordes de una canción. Usa las pistas
+     * separadas si las tiene y, si no, el original; si se está separando,
+     * espera a que termine. Los acordes corregidos a mano se conservan, por eso
+     * sirve también para "Mejorar acordes con pistas separadas".
+     */
     public function analyze(Song $song): JsonResponse
     {
         $this->authorize('update', $song);
 
-        if ($song->status !== Song::STATUS_READY) {
-            return response()->json(['message' => 'La canción todavía no tiene pistas separadas.'], 409);
-        }
         if ($song->chordsBusy()) {
-            return response()->json(['message' => 'El análisis de acordes ya está en marcha.'], 409);
+            return response()->json(['message' => 'El análisis de acordes ya está en cola o en marcha.'], 409);
         }
 
         $song->queueChordAnalysis();
+
+        return response()->json(self::payload($song->fresh()));
+    }
+
+    /** Cancela el análisis de acordes: detiene el proceso real si está en marcha. */
+    public function cancel(Song $song): JsonResponse
+    {
+        $this->authorize('update', $song);
+
+        if (! $song->chordsBusy()) {
+            return response()->json(['message' => 'Los acordes no se están analizando.'], 422);
+        }
+
+        $wasProcessing = $song->chords_status === Song::STATUS_PROCESSING;
+        $error = 'Cancelado por ti.';
+        $changed = Song::whereKey($song->id)
+            ->whereIn('chords_status', [Song::CHORDS_WAITING, Song::STATUS_PENDING, Song::STATUS_PROCESSING])
+            ->update(['chords_status' => Song::STATUS_CANCELED, 'chords_error' => $error, 'chords_finished_at' => now()]);
+
+        if ($changed && ! $wasProcessing) {
+            QueueWatchdog::forgetJobs(AnalyzeChords::class, $song->id);
+        } elseif ($changed) {
+            // El job lo nota en 1 s, detiene el motor y lo confirma (chords_pid = null).
+            $deadline = microtime(true) + (float) config('audio.chords.cancel_wait', 6);
+            while (microtime(true) < $deadline && Song::whereKey($song->id)->whereNotNull('chords_pid')->exists()) {
+                usleep(200_000);
+            }
+            $fresh = $song->fresh();
+            if ($fresh && $fresh->chords_pid !== null) {
+                QueueWatchdog::abortChords($fresh, $error, Song::STATUS_CANCELED);
+            }
+        }
 
         return response()->json(self::payload($song->fresh()));
     }

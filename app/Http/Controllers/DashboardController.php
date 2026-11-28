@@ -18,7 +18,8 @@ class DashboardController extends Controller
 
         $byStatus = Song::ownedBy($user)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
         $originals = (int) Song::ownedBy($user)->sum('original_size');
-        $stems = (int) Track::whereIn('song_id', Song::ownedBy($user)->select('id'))->sum('size');
+        // La pista "original" es el mismo archivo que el original: no se cuenta dos veces.
+        $stems = (int) Track::whereIn('song_id', Song::ownedBy($user)->select('id'))->where('stem', '!=', Track::ORIGINAL)->sum('size');
 
         return Inertia::render('dashboard', [
             'stats' => [
@@ -27,6 +28,7 @@ class DashboardController extends Controller
                 'processing' => (int) ($byStatus[Song::STATUS_PROCESSING] ?? 0),
                 'ready' => (int) ($byStatus[Song::STATUS_READY] ?? 0),
                 'failed' => (int) ($byStatus[Song::STATUS_FAILED] ?? 0),
+                'chords' => Song::ownedBy($user)->where('chords_status', Song::STATUS_READY)->count(),
                 'bytes' => $originals + $stems,
                 'minutes' => round((float) Song::ownedBy($user)->sum('duration') / 60, 1),
             ],

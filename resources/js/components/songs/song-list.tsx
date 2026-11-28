@@ -1,4 +1,4 @@
-import { StatusBadge } from '@/components/songs/status-badge';
+import { ChordsBadge, StatusBadge } from '@/components/songs/status-badge';
 import { formatBytes, formatDate, formatDuration } from '@/lib/format';
 import { type Song } from '@/types';
 import { Music } from 'lucide-react';
@@ -37,7 +37,10 @@ export function SongList<T extends Song>({ songs, actions, details, emptyMessage
                                 {formatDate(song.created_at)}
                             </p>
                         </div>
-                        <StatusBadge status={song.status} />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge status={song.status} progress={'progress' in song ? (song.progress as number | null) : null} />
+                            <ChordsBadge status={song.chords_status} chordKey={song.chords_key} progress={song.chords_progress} />
+                        </div>
                         {actions && <div className="flex shrink-0 items-center gap-1">{actions(song)}</div>}
                     </div>
                     {details?.(song)}
