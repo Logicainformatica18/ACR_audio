@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSongRequest;
 use App\Http\Resources\SongResource;
+use App\Jobs\AnalyzeChords;
 use App\Jobs\SeparateSong;
+use App\Models\Folder;
 use App\Models\Song;
 use App\Models\Track;
 use App\Models\User;
@@ -32,8 +34,11 @@ class SongController extends Controller
 
         $prefs = $user->preferences();
 
+        Song::purgeTrashed(); // borra del todo lo que lleva más de un minuto en la papelera
+
         return Inertia::render('songs/index', [
             'songs' => SongResource::collection($this->userSongs($user))->resolve(),
+            'folders' => FolderController::tree($user),
             'sort' => $prefs->songs_sort,
             'uploadPrefs' => [
                 'chords_auto' => $prefs->chords_auto,
@@ -79,8 +84,15 @@ class SongController extends Controller
         $separate = ($request->input('mode') ?? $prefs->upload_mode ?? 'separate') === 'separate';
         $chords = $request->has('chords') ? $request->boolean('chords') : $prefs->chords_auto;
 
-        $song = DB::transaction(function () use ($user, $file, $ext, $separate) {
+        // Carpeta de destino (la abierta al subir o la elegida en el modal): solo propias.
+        $folderId = $request->filled('folder_id') ? (int) $request->input('folder_id') : null;
+        if ($folderId && ! Folder::ownedBy($user)->whereKey($folderId)->exists()) {
+            return response()->json(['message' => 'Esa carpeta no existe.', 'errors' => ['folder_id' => ['Esa carpeta no existe.']]], 422);
+        }
+
+        $song = DB::transaction(function () use ($user, $file, $ext, $separate, $folderId) {
             $song = $user->songs()->create([
+                'folder_id' => $folderId,
                 'title' => self::titleFromFileName($file->getClientOriginalName()),
                 'original_name' => Str::limit($file->getClientOriginalName(), 250, ''),
                 'original_ext' => $ext,
@@ -159,7 +171,7 @@ class SongController extends Controller
         // Detecta trabajos con el worker muerto aunque las ventanas estén cerradas.
         QueueWatchdog::checkThrottled(5);
 
-        $songs = Song::ownedBy($user)->withCount('tracks')->get();
+        $songs = Song::ownedBy($user)->withCount('tracks')->orderBy('id')->get();
 
         // Canciones de todos los usuarios que esperan turno (la cola es una sola).
         $queue = Song::where('status', Song::STATUS_PENDING)->orderBy('queued_at')->orderBy('id')->pluck('id')->all();
@@ -293,12 +305,111 @@ class SongController extends Controller
             return response()->json(['message' => 'No se puede borrar mientras se analizan sus acordes. Cancela el análisis primero o espera unos segundos.'], 409);
         }
 
-        $directory = $song->directory(); // {user_id}/{song_id}: solo ids
-        $song->delete(); // cascada en BD: tracks, track_settings, scheduled_silences
-        Storage::disk('audio')->deleteDirectory($directory);
+        // A la papelera: se puede deshacer durante Song::UNDO_SECONDS. Después,
+        // Song::purgeTrashed() borra filas (cascada) y archivos definitivamente.
+        $song->delete();
         Cache::forget(SeparateSong::progressKey($song->id));
 
-        return response()->json(['deleted' => true]);
+        return response()->json(['deleted' => true, 'undo_seconds' => Song::UNDO_SECONDS]);
+    }
+
+    /** Deshacer borrados: recupera canciones de la papelera (solo las propias). */
+    public function restore(Request $request): JsonResponse
+    {
+        $data = $request->validate(['song_ids' => ['required', 'array'], 'song_ids.*' => ['integer']]);
+        $songs = Song::onlyTrashed()->ownedBy($request->user())->whereIn('id', $data['song_ids'])->get();
+
+        foreach ($songs as $song) {
+            $song->restore();
+            // Los trabajos de la cola se descartaron al borrarla: se vuelven a encolar.
+            if ($song->status === Song::STATUS_PENDING) {
+                SeparateSong::dispatch($song);
+            }
+            if ($song->chords_status === Song::STATUS_PENDING) {
+                AnalyzeChords::dispatch($song);
+            }
+        }
+
+        return response()->json(['restored' => $songs->pluck('id')]);
+    }
+
+    /** Mueve una o varias canciones a una carpeta (o a "Sin carpeta" con null). */
+    public function move(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'song_ids' => ['required', 'array', 'min:1', 'max:1000'],
+            'song_ids.*' => ['integer'],
+            'folder_id' => ['nullable', 'integer'],
+        ]);
+
+        if (isset($data['folder_id']) && ! Folder::ownedBy($user)->whereKey($data['folder_id'])->exists()) {
+            return response()->json(['message' => 'Esa carpeta no existe.'], 422);
+        }
+        $ids = Song::ownedBy($user)->whereIn('id', $data['song_ids'])->pluck('id');
+        if ($ids->count() !== count(array_unique($data['song_ids']))) {
+            return response()->json(['message' => 'Alguna de esas canciones no existe.'], 403);
+        }
+        Song::whereIn('id', $ids)->update(['folder_id' => $data['folder_id'] ?? null]);
+
+        return response()->json(['moved' => $ids->count(), 'folders' => FolderController::tree($user)]);
+    }
+
+    /**
+     * Acciones sobre varias canciones a la vez: separar, detectar acordes o
+     * borrar. Las que no admiten la acción se saltan y se informa.
+     */
+    public function bulk(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'action' => ['required', 'in:separate,chords,delete'],
+            'song_ids' => ['required', 'array', 'min:1', 'max:1000'],
+            'song_ids.*' => ['integer'],
+        ]);
+        $songs = Song::ownedBy($user)->whereIn('id', $data['song_ids'])->get();
+        if ($songs->count() !== count(array_unique($data['song_ids']))) {
+            return response()->json(['message' => 'Alguna de esas canciones no existe.'], 403);
+        }
+
+        $done = [];
+        $skipped = 0;
+        foreach ($songs as $song) {
+            $ok = match ($data['action']) {
+                'separate' => in_array($song->status, [Song::STATUS_NONE, Song::STATUS_FAILED, Song::STATUS_CANCELED], true),
+                'chords' => ! $song->chordsBusy(),
+                'delete' => $song->status !== Song::STATUS_PROCESSING && $song->chords_status !== Song::STATUS_PROCESSING,
+            };
+            if (! $ok) {
+                $skipped++;
+
+                continue;
+            }
+            match ($data['action']) {
+                'separate' => $this->queueSeparation($song, $user->preferences()->effectiveModel()),
+                'chords' => $song->queueChordAnalysis(),
+                'delete' => $song->delete(),
+            };
+            $done[] = $song->id;
+        }
+
+        $verb = ['separate' => 'en cola para separar', 'chords' => 'en cola de acordes', 'delete' => 'borradas'][$data['action']];
+        $message = count($done).' '.(count($done) === 1 ? 'canción' : 'canciones')." {$verb}.";
+        if ($skipped) {
+            $message .= " {$skipped} no se pudieron (ya en marcha o no aplicable).";
+        }
+
+        return response()->json(['done' => $done, 'skipped' => $skipped, 'message' => $message, 'folders' => FolderController::tree($user)]);
+    }
+
+    private function queueSeparation(Song $song, string $model): void
+    {
+        QueueWatchdog::forgetJobs(SeparateSong::class, $song->id);
+        $song->update([
+            'status' => Song::STATUS_PENDING, 'model' => $model, 'error' => null, 'log' => null,
+            'queued_at' => now(), 'started_at' => null, 'finished_at' => null, 'process_pid' => null, 'heartbeat_at' => null,
+        ]);
+        SeparateSong::dispatch($song);
     }
 
     /** @return Collection<int, Song> */

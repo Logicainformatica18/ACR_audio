@@ -89,7 +89,7 @@ class QueueRobustnessTest extends TestCase
 
         // Ahora sí se puede borrar.
         $this->actingAs($owner)->deleteJson("/songs/{$song->id}")->assertOk();
-        $this->assertModelMissing($song);
+        $this->assertSoftDeleted($song);
     }
 
     public function test_a_processing_song_cannot_be_deleted_without_canceling_first(): void

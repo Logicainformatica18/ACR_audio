@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ChordController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FolderController;
 use App\Http\Controllers\MixerController;
 use App\Http\Controllers\SongController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,17 @@ Route::middleware('auth')->group(function () {
 
     Route::patch('songs/{song}', [SongController::class, 'update'])->whereNumber('song')->name('songs.update');
     Route::delete('songs/{song}', [SongController::class, 'destroy'])->whereNumber('song')->name('songs.destroy');
+    Route::post('songs/restore', [SongController::class, 'restore'])->name('songs.restore');
+    Route::post('songs/move', [SongController::class, 'move'])->name('songs.move');
+    Route::post('songs/bulk', [SongController::class, 'bulk'])->name('songs.bulk');
+
+    // Carpetas
+    Route::get('folders', [FolderController::class, 'index'])->name('folders.index');
+    Route::post('folders', [FolderController::class, 'store'])->name('folders.store');
+    Route::patch('folders/{folder}', [FolderController::class, 'update'])->whereNumber('folder')->name('folders.update');
+    Route::post('folders/{folder}/move', [FolderController::class, 'move'])->whereNumber('folder')->name('folders.move');
+    Route::delete('folders/{folder}', [FolderController::class, 'destroy'])->whereNumber('folder')->name('folders.destroy');
+    Route::post('folders/{folder}/restore', [FolderController::class, 'restore'])->whereNumber('folder')->name('folders.restore');
 
     // Mezclador
     Route::get('songs/{song}', [MixerController::class, 'show'])->whereNumber('song')->name('songs.show');
@@ -32,6 +44,11 @@ Route::middleware('auth')->group(function () {
         ->whereNumber(['song', 'track'])
         ->scopeBindings()
         ->name('songs.tracks.audio');
+    Route::get('songs/{song}/download', [MixerController::class, 'downloadOriginal'])->whereNumber('song')->name('songs.download');
+    Route::patch('songs/{song}/tracks/{track}', [MixerController::class, 'renameTrack'])
+        ->whereNumber(['song', 'track'])
+        ->scopeBindings()
+        ->name('songs.tracks.rename');
 
     // Acordes
     Route::get('songs/{song}/chords', [ChordController::class, 'index'])->whereNumber('song')->name('songs.chords.index');

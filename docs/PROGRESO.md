@@ -283,7 +283,43 @@ Y un cuarto fallo, encontrado al probar: **el bucle de `iniciar.bat` nunca reini
   - Las dos canciones de prueba sin acordes se borraron. *Jingle Bell (copia)* y *Resident Evil Credits (copia)* quedan como ejemplos de cada modo.
 - **Fallo encontrado y corregido:** «U2 New Yea» (subida por ti a las 11:24) tenía «Error en acordes: se colgó, no avanzó en 120 s». El motor tardó más de 120 s en cargar torch en frío y el detector de cuelgues lo cortó. Ahora el motor avisa de su progreso durante la carga y el margen es de 300 s. Se volvió a analizar: B mayor.
 
+## Fase 8 — Carpetas y edición rápida ✅
+
+- **Carpetas por usuario:**
+  - hasta 3 niveles, con color (8 colores) y nota;
+  - árbol en la barra lateral, plegable y con contadores;
+  - ruta del tipo «Metal › Satriani › Surfing» y «Sin carpeta»;
+  - borrar una carpeta no borra canciones.
+- **Arrastrar y soltar** (dnd-kit): una canción o varias a la vez, y carpetas para reordenarlas o meterlas dentro de otra, con el destino resaltado. «Mover a…» con buscador como alternativa.
+- **Selección múltiple** (Ctrl/Mayús + clic, casillas y flechas) con barra de acciones: mover, separar, detectar acordes y borrar.
+- **Edición en línea:** doble clic o F2 en canciones, carpetas, notas y pistas del mezclador (que se pueden renombrar conservando su tipo). «+ Carpeta» crea «Nueva carpeta» con el nombre seleccionado.
+- **Menús contextuales** (clic derecho) en canciones y carpetas.
+- **Guardado optimista, Deshacer** (aviso y Ctrl+Z) y papelera de 60 s para canciones y carpetas.
+- **Atajos:** F2, Supr, Ctrl+A, Enter, Ctrl+Z, Esc, flechas y «?».
+- **Búsqueda** en todas las carpetas (indica la carpeta de cada resultado). Filtros dentro de la carpeta abierta. Subir dentro de una carpeta la guarda ahí, y el modal permite cambiar el destino.
+- **Verificado:**
+  - **111 tests** (10 nuevos en `FoldersTest`):
+    - mover canciones y carpetas;
+    - ciclos y 4.º nivel rechazados;
+    - borrar carpetas sin perder canciones y deshacer;
+    - carpetas ajenas;
+    - lotes, papelera y pistas renombradas.
+  - **En Edge:**
+    1. «+ Carpeta» crea «Nueva carpeta» seleccionada; se crearon Metal › Satriani › Surfing y Baladas.
+    2. Arrastrar una canción a Metal (destino resaltado).
+    3. Ctrl+clic en dos canciones: «2 seleccionadas»; se arrastran juntas a Satriani.
+    4. Doble clic en un nombre → «Improvisación 2023» guardado; **Ctrl+Z** lo deshace.
+    5. Arrastrar la carpeta Baladas dentro de Metal; arrastrar Metal dentro de Surfing se rechaza con un aviso claro.
+    6. Borrar Satriani: la confirmación explica adónde van las canciones; las 2 canciones y Surfing pasan a Metal; «Deshacer» lo restaura todo.
+    7. Buscar «satriani» encuentra 3 canciones en distintas carpetas.
+    8. La ruta muestra «Canciones › Metal › Satriani»; «?» abre la ayuda de atajos.
+    9. «Mover a…» desde el clic derecho: el foco va al buscador, «surf» deja solo «Metal › Satriani › Surfing» y Enter la mueve.
+    10. Móvil (400 px) y modo oscuro correctos, sin errores en consola.
+  - Las carpetas de prueba se borraron después: tu biblioteca quedó sin carpetas, como estaba.
+- **Fallos encontrados y corregidos al probar:** soltar en la carpeta equivocada con la página desplazada (C5), página bloqueada tras borrar desde el menú contextual y foco robado al cerrar el menú (C12).
+
 ## Problemas conocidos / pendientes
+- **Arrastrar con el teclado** (Espacio sobre una fila y flechas) usa la detección estándar de dnd-kit y es menos precisa que con el ratón. Para teclado es más cómodo «Mover a…».
 - **El primer análisis de acordes tras encender el PC es lento**: Windows tiene que leer torch (unos 3 GB) del disco. Se midieron 34 s en una canción que después tarda 6 s.
 - **No hay sugerencias de escalas** (nunca se implementaron).
 

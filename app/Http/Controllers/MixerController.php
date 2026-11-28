@@ -38,6 +38,7 @@ class MixerController extends Controller
                 'stem' => $track->stem,
                 'original' => $track->isOriginal(),
                 'label' => $track->label(),
+                'default_label' => $track->defaultLabel(),
                 'color' => $track->color(),
                 'size' => $track->size,
                 'url' => route('songs.tracks.audio', [$song, $track]),
@@ -100,10 +101,36 @@ class MixerController extends Controller
         return response()->file($disk->path($path), $headers);
     }
 
+    /**
+     * Renombra una pista ("Guitarra" → "Guitarra Satriani"). Su tipo (stem)
+     * no cambia. Un nombre vacío vuelve al nombre de su tipo.
+     */
+    public function renameTrack(Request $request, Song $song, Track $track): JsonResponse
+    {
+        $this->authorize('update', $song);
+        abort_unless($track->song_id === $song->id, 404);
+
+        $data = $request->validate(['label' => ['nullable', 'string', 'max:100']]);
+        $label = trim(preg_replace('/\s+/u', ' ', preg_replace('/[\x00-\x1F\x7F]+/u', '', (string) ($data['label'] ?? '')) ?? '') ?? '');
+        $track->update(['label' => $label === '' || $label === $track->defaultLabel() ? null : $label]);
+
+        return response()->json(['label' => $track->label(), 'default_label' => $track->defaultLabel()]);
+    }
+
+    /** Descarga el archivo original de la canción como "Título.ext" (menú contextual de la lista). */
+    public function downloadOriginal(Song $song): BinaryFileResponse
+    {
+        $this->authorize('view', $song);
+        $disk = Storage::disk('audio');
+        abort_unless($disk->exists($song->originalPath()), 404);
+
+        return response()->download($disk->path($song->originalPath()), self::downloadName($song->title, '', $song->original_ext));
+    }
+
     /** Nombre de descarga sin caracteres prohibidos en Windows. */
     public static function downloadName(string $title, string $label, string $ext): string
     {
-        $base = preg_replace('/[\\\\\/:*?"<>|\x00-\x1F]+/u', '', "{$title} - {$label}") ?? 'pista';
+        $base = preg_replace('/[\\\\\/:*?"<>|\x00-\x1F]+/u', '', $label === '' ? $title : "{$title} - {$label}") ?? 'pista';
         $base = trim(preg_replace('/\s+/u', ' ', $base) ?? '', ' .');
 
         return ($base === '' ? 'pista' : Str::limit($base, 150, '')).'.'.$ext;

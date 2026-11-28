@@ -64,6 +64,14 @@ class SongManagementTest extends TestCase
 
         $this->actingAs($user)->deleteJson("/songs/{$song->id}")->assertOk();
 
+        // Primero va a la papelera (se puede deshacer) y desaparece de la lista...
+        $this->assertSoftDeleted($song);
+        Storage::disk('audio')->assertExists($song->originalPath());
+        $this->actingAs($user)->getJson('/songs/status')->assertJsonMissing(['id' => $song->id]);
+
+        // ...y pasado el tiempo de deshacer se borra del todo: filas y archivos.
+        $this->travel(Song::UNDO_SECONDS + 1)->seconds();
+        Song::purgeTrashed();
         $this->assertDatabaseMissing('songs', ['id' => $song->id]);
         $this->assertDatabaseCount('tracks', 1);
         $this->assertDatabaseCount('track_settings', 1);

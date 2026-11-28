@@ -39,6 +39,8 @@ class QueueWatchdog
     {
         if (Cache::add('queue-watchdog', true, $every)) {
             self::check();
+            // De paso, vacía la papelera (canciones borradas hace más de un minuto).
+            Song::purgeTrashed();
         }
     }
 

@@ -14,6 +14,7 @@ class Track extends Model
 {
     protected $fillable = [
         'stem',
+        'label',
         'file_name',
         'size',
         'position',
@@ -33,7 +34,8 @@ class Track extends Model
 
     public function song(): BelongsTo
     {
-        return $this->belongsTo(Song::class);
+        // También si la canción está en la papelera (sus archivos siguen ahí).
+        return $this->belongsTo(Song::class)->withTrashed();
     }
 
     /** Volumen, mute y solo. Si aún no existe, devuelve los valores por defecto. */
@@ -67,7 +69,15 @@ class Track extends Model
             : $this->song->stemsDirectory().'/'.$this->file_name;
     }
 
+    /** Nombre visible: el que puso el usuario o, si no, el de su tipo ("Guitarra"). */
     public function label(): string
+    {
+        // Columna "label" leída directamente: $this->label chocaría con este método.
+        return ($this->getAttributes()['label'] ?? null) ?: $this->defaultLabel();
+    }
+
+    /** Nombre según el tipo de pista (no cambia aunque el usuario la renombre). */
+    public function defaultLabel(): string
     {
         return config("audio.stems.{$this->stem}.label", ucfirst($this->stem));
     }

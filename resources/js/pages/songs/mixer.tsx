@@ -1,4 +1,5 @@
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { InlineEdit } from '@/components/inline-edit';
 import { ChordEditDialog } from '@/components/mixer/chord-edit-dialog';
 import { ChordLane, ChordZoom } from '@/components/mixer/chord-lane';
 import { ChordSheet } from '@/components/mixer/chord-sheet';
@@ -41,11 +42,13 @@ import {
     Sparkles,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 interface MixerTrack {
     id: number;
     stem: string;
     label: string;
+    default_label: string; // nombre de su tipo ("Guitarra"), aunque el usuario la renombre
     color: string;
     size: number;
     url: string;
@@ -213,6 +216,26 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
         [mix, silences, master],
     );
     const { status: saveStatus, retry: retrySave } = useAutosave(route('songs.mixer.save', song.id), payload, true);
+
+    // ----- Nombres de las pistas (renombrar en línea, con guardado optimista) -----
+    const [labels, setLabels] = useState<Record<number, string>>(() => Object.fromEntries(tracks.map((t) => [t.id, t.label])));
+    const [editingTrack, setEditingTrack] = useState<number | null>(null);
+    const renameTrack = async (id: number, label: string) => {
+        const before = labels[id];
+        const fallback = tracks.find((t) => t.id === id)?.default_label ?? before;
+        setLabels((l) => ({ ...l, [id]: label || fallback }));
+        try {
+            const { data } = await axios.patch<{ label: string }>(
+                route('songs.tracks.rename', [song.id, id]),
+                { label },
+                { headers: { Accept: 'application/json' } },
+            );
+            setLabels((l) => ({ ...l, [id]: data.label }));
+        } catch (e) {
+            setLabels((l) => ({ ...l, [id]: before }));
+            toast.error((e as AxiosError<{ message?: string }>).response?.data?.message ?? 'No se pudo renombrar la pista.');
+        }
+    };
 
     // ----- Pista "Original" -----
     // En una canción separada va oculta (y sin descargar) hasta que se pide para comparar.
@@ -610,10 +633,30 @@ export default function Mixer({ song, tracks, preferences, analysis: initialAnal
                                         style={{ borderLeftColor: m.color }}
                                     >
                                         <span
-                                            className={cn('truncate text-xl leading-tight font-semibold', !audible && 'text-muted-foreground')}
-                                            title={m.label}
+                                            className={cn(
+                                                'min-w-0 truncate text-xl leading-tight font-semibold',
+                                                !audible && 'text-muted-foreground',
+                                            )}
+                                            tabIndex={0}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'F2' && editingTrack !== t.id) {
+                                                    e.preventDefault();
+                                                    setEditingTrack(t.id);
+                                                }
+                                            }}
+                                            aria-label={`Pista ${labels[t.id] ?? m.label}: doble clic o F2 para renombrar`}
                                         >
-                                            {m.label}
+                                            <InlineEdit
+                                                value={labels[t.id] ?? m.label}
+                                                editing={editingTrack === t.id}
+                                                onEditingChange={(e) => setEditingTrack(e ? t.id : null)}
+                                                onSave={(label) => void renameTrack(t.id, label)}
+                                                allowEmpty
+                                                maxLength={100}
+                                                ariaLabel={`Nombre de la pista (vacío = ${m.default_label})`}
+                                                className="truncate"
+                                                inputClassName="w-full text-lg font-semibold"
+                                            />
                                             <span className="text-muted-foreground ml-1.5 hidden align-middle text-xs font-normal group-data-[silenced=true]:inline">
                                                 en silencio
                                             </span>

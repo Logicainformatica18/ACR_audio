@@ -141,11 +141,23 @@ Los acordes quedan guardados: la próxima vez que abras la canción salen de la 
 
 ### Organizar tus canciones
 
-- **Buscar:** escribe en "Buscar canción…". No importan las tildes ni las mayúsculas.
+- **Carpetas** (barra de la izquierda; en el móvil, botón «Carpetas»):
+  - **+ Carpeta** crea «Nueva carpeta» con el nombre listo para escribir encima. Si tienes una carpeta abierta, la crea dentro. Admite hasta 3 niveles, por ejemplo *Metal › Satriani › Surfing*.
+  - **Clic derecho** en una carpeta: renombrar, nueva subcarpeta, color (8 colores), nota (por ejemplo «afinación Eb»), mover a… y borrar.
+  - **Arrastrar** una carpeta encima de otra la mete dentro; soltarla entre dos carpetas la reordena.
+  - **Borrar una carpeta no borra sus canciones**: pasan a la carpeta superior o a «Sin carpeta». Se puede deshacer.
+  - Si subes canciones con una carpeta abierta, se guardan ahí. En la ventana de subida puedes cambiar el destino.
+- **Mover canciones:** arrástralas hasta una carpeta del árbol (si hay varias seleccionadas, se mueven todas) o usa **Mover a…** (clic derecho, menú ⋯ o barra de selección), con buscador.
+- **Seleccionar varias:** Ctrl + clic, Mayús + clic (rango), la casilla de cada fila o Ctrl + A. Aparece una barra con *Mover a…*, *Separar*, *Detectar acordes* y *Borrar*.
+- **Renombrar en el sitio:** doble clic (o F2) sobre el nombre de una canción, carpeta o pista del mezclador. Enter guarda, Esc cancela y hacer clic fuera también guarda. Si dejas vacía una pista del mezclador, recupera su nombre original.
+- **Clic derecho** en una canción: abrir, renombrar, mover a…, separar, detectar acordes, descargar el original y borrar.
+- **Deshacer:** tras mover, renombrar o borrar aparece abajo un aviso con **Deshacer**. También **Ctrl + Z**. Las canciones borradas se pueden recuperar durante un minuto.
+- **Atajos de teclado** (pulsa **?** para verlos): F2 renombrar, Supr borrar, Ctrl + A seleccionar todo, Enter abrir en el mezclador, ↑ ↓ moverse, Ctrl + Z deshacer y Esc quitar la selección.
+- **Buscar:** busca en **todas las carpetas** e indica en cuál está cada canción. No importan las tildes ni las mayúsculas.
 - **Ordenar:** más recientes, por título o por estado. Se recuerda.
-- **Filtrar:** Todas, Separadas, Solo original, Con acordes o Sin acordes.
+- **Filtrar:** Todas, Separadas, Solo original, Con acordes o Sin acordes, dentro de la carpeta abierta.
 - **Separar pistas** de una canción subida con «Solo subir»: botón **⋯** → *Separar pistas*.
-- **Renombrar o borrar:** botón **⋯** de cada canción. Borrar pide confirmación y elimina el archivo original, las pistas y los ajustes. No se puede borrar una canción mientras se está separando: cancélala primero.
+- **Borrar:** pide confirmación y elimina el archivo original, las pistas y los ajustes. No se puede borrar una canción mientras se está separando: cancélala primero.
 
 ### Preferencias
 

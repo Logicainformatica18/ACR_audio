@@ -49,6 +49,7 @@ export interface UploadPrefs {
 export interface Song {
     id: number;
     title: string;
+    folder_id: number | null;
     status: SongStatus;
     error: string | null;
     original_name: string;

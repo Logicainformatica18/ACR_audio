@@ -48,7 +48,8 @@ docs/                                 esta documentación
 | `users` | Usuarios (`name`, `email`, `password`, `remember_token`) | — |
 | `user_preferences` | Preferencias: `master_volume` (volumen general del mezclador), `separation_model` (null = el del `.env`), `songs_sort` (orden de la lista: `recent`, `title`, `status`) y `keyboard_shortcuts` | 1 a 1 con `users` (`user_id` único, borrado en cascada) |
 | `songs` (canciones) | `title`, `original_name` (solo informativo), `original_ext`, `original_size`, `duration`, `status`, `model`, `log`, `error`, `queued_at`/`started_at`/`finished_at`. **Análisis de acordes:** `chords_status` (null = nunca analizada, `pending`, `processing`, `ready`, `failed`), `chords_progress` (0–100), `chords_model`, `chords_key` (tonalidad, "B menor"), `chords_error`, `chords_started_at`/`chords_finished_at` | N a 1 con `users` (cascada) |
-| `tracks` (pistas) | `stem` (vocals, drums… y **`original`**, que apunta al archivo subido), `file_name` (generado por el servidor), `size`, `position` (la original va en 100) y `peaks` (forma de onda: 4000 bytes 0–255 en base64) | N a 1 con `songs` (cascada). Único por (`song_id`, `stem`) |
+| `tracks` (pistas) | `stem` (vocals, drums… y **`original`**, que apunta al archivo subido), `label` (nombre puesto por el usuario; null = el de su tipo), `file_name` (generado por el servidor), `size`, `position` (la original va en 100) y `peaks` (forma de onda: 4000 bytes 0–255 en base64) | N a 1 con `songs` (cascada). Único por (`song_id`, `stem`) |
+| `folders` (carpetas) | `name`, `color` (red, orange, amber, green, teal, blue, violet o pink), `note`, `position` (orden entre hermanas), `parent_id` (hasta 3 niveles) y `deleted_at` (papelera para deshacer) | N a 1 con `users` (cascada). `songs.folder_id` apunta aquí (null = «Sin carpeta») |
 | `chords` (acordes) | `start_seconds`, `end_seconds`, `chord` (notación de guitarrista: `Bm`, `F#m7`, `N` = sin acorde), `confidence` (0–1, null si es manual) y `edited` (corregido a mano) | N a 1 con `songs` (cascada). Índice (`song_id`, `start_seconds`) |
 | `track_settings` (ajustes de pista) | `volume` (0–1), `muted` y `solo` | 1 a 1 con `tracks` (cascada). Si no existe, el modelo devuelve 1 / false / false |
 | `scheduled_silences` (silencios programados) | `start_seconds` y `end_seconds` | N a 1 con `tracks` (cascada) |
@@ -252,6 +253,16 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 |---|---|---|
 | GET | `/songs` | Lista y zona de subida |
 | POST | `/songs` | Sube un archivo. `mode` = `separate` (la encola para separar) o `upload` (solo la guarda); `chords` = 0/1. Si faltan, usa las preferencias |
+| POST | `/songs/move` | Mueve canciones (`song_ids`) a una carpeta (`folder_id`; null = «Sin carpeta») |
+| POST | `/songs/bulk` | Acción en lote (`separate`, `chords` o `delete`) sobre `song_ids`; salta las que no aplican |
+| POST | `/songs/restore` | Deshacer borrados: saca canciones de la papelera (60 s) y vuelve a encolar lo que estaba en cola |
+| GET | `/songs/{id}/download` | Descarga el archivo original como «Título.ext» |
+| PATCH | `/songs/{id}/tracks/{pista}` | Renombra una pista (`label`; vacío = nombre de su tipo) |
+| GET/POST | `/folders` | Árbol de carpetas con contadores / crear («Nueva carpeta» por defecto) |
+| PATCH | `/folders/{id}` | Nombre, color o nota |
+| POST | `/folders/{id}/move` | Meter en otra carpeta (`parent_id`) y/o reordenar (`position`). Rechaza ciclos, un 4.º nivel y carpetas ajenas |
+| DELETE | `/folders/{id}` | Borra la carpeta; sus canciones y subcarpetas pasan a la superior |
+| POST | `/folders/{id}/restore` | Deshacer el borrado de una carpeta, devolviéndole sus canciones y subcarpetas |
 | POST | `/songs/{id}/separate` | Separa una canción subida con «Solo subir» (o reintenta una separación fallida o cancelada) |
 | POST | `/songs/chords/analyze-missing` | Encola los acordes de todas las canciones del usuario que no los tienen |
 | POST | `/songs/{id}/chords/cancel` | Cancela el análisis de acordes (detiene el motor real) |
@@ -275,7 +286,7 @@ salir de la página con cambios pendientes ─► fetch keepalive con el mismo P
 
 ## Tests
 
-- `php artisan test`: 101 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
+- `php artisan test`: 111 tests. Usan SQLite en memoria, un disco `audio` falso (`Storage::fake` en `tests/TestCase.php`), cola `sync` con `SEPARATOR_BIN` vacío, `CHORDS_PYTHON` apuntando a una ruta inexistente y `withoutVite()`.
 - El job de acordes se prueba con un **motor falso en PHP** (`tests/Fixtures/fake_chords_*.php`) que imprime los mismos eventos JSON.
 - **Nunca** tocan la base `audio`, los archivos reales, el audio-separator ni el motor de acordes real.
 

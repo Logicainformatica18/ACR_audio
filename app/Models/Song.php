@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Canción subida por un usuario.
@@ -22,6 +24,15 @@ class Song extends Model
 {
     /** @use HasFactory<SongFactory> */
     use HasFactory;
+
+    /**
+     * Borrar = papelera unos segundos (para "Deshacer"); después
+     * purgeTrashed() borra filas y archivos definitivamente.
+     */
+    use SoftDeletes;
+
+    /** Segundos que una canción borrada se puede recuperar antes de borrarla del todo. */
+    public const UNDO_SECONDS = 60;
 
     public const STATUS_PENDING = 'pending';
 
@@ -51,6 +62,7 @@ class Song extends Model
 
     protected $fillable = [
         'title',
+        'folder_id',
         'original_name',
         'original_ext',
         'original_size',
@@ -95,6 +107,28 @@ class Song extends Model
             'chords_pid' => 'integer',
             'chords_heartbeat_at' => 'datetime',
         ];
+    }
+
+    public function folder(): BelongsTo
+    {
+        return $this->belongsTo(Folder::class);
+    }
+
+    /**
+     * Borra del todo (filas y archivos) las canciones que llevan más de
+     * UNDO_SECONDS en la papelera, y las carpetas borradas hace lo mismo.
+     */
+    public static function purgeTrashed(): int
+    {
+        $limit = now()->subSeconds(self::UNDO_SECONDS);
+        $songs = self::onlyTrashed()->where('deleted_at', '<', $limit)->get();
+        foreach ($songs as $song) {
+            Storage::disk('audio')->deleteDirectory($song->directory());
+            $song->forceDelete();
+        }
+        Folder::onlyTrashed()->where('deleted_at', '<', $limit)->forceDelete();
+
+        return $songs->count();
     }
 
     public function user(): BelongsTo

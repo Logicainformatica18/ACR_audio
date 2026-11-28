@@ -44,6 +44,7 @@ class StoreSongRequest extends FormRequest
             'mode' => ['nullable', 'in:separate,upload'],
             'chords' => ['nullable', 'boolean'],
             'allow_duplicate' => ['nullable', 'boolean'],
+            'folder_id' => ['nullable', 'integer'],
         ];
     }
 
